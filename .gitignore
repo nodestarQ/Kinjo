@@ -1,0 +1,47 @@
+# Secrets and keys
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets/
+
+# OS / editors
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.swp
+*~
+
+# Logs
+*.log
+logs/
+
+# Node / SvelteKit (web, desktop, gateway)
+node_modules/
+.svelte-kit/
+build/
+dist/
+.vite/
+.pnpm-store/
+
+# Python (tools, test vectors)
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+
+# Firmware (Arduino / PlatformIO)
+.pio/
+*.bin
+*.elf
+*.map
+
+# Foundry (contracts)
+out/
+cache/
+broadcast/*/31337/
+broadcast/**/dry-run/
