@@ -26,6 +26,14 @@ The demo forces a two-hop route (handheld → relay → laptop) so the relay rea
 - Devices sync these records while online and keep a local copy, so trust checks still work offline.
 - The owner can revoke a device in ENS. Other nodes reject it after their next sync.
 
+## Who you hear from
+
+Each chat interface (handheld, laptop node) decides what its own screen shows. Nothing here drops or censors traffic: relays forward every packet because they can't read it.
+
+- **Verified humans only:** an owner can verify with World ID. The badge then covers all their devices. With the filter on, messages from unverified senders are hidden but not deleted. The UI shows how many are hidden.
+- **Block:** block a whole owner (`alice.kinjo.eth`, including devices she adds later) or a single device. Blocked messages are hidden the same way. The block list stays on the device.
+- The handheld stores up to 256 blocks and 64 contacts in flash.
+
 ## Payments without Internet
 
 - The handheld signs a payment (an EIP-712 "intent") and sends it over the mesh like any other message.

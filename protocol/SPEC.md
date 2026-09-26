@@ -153,7 +153,7 @@ Trust rule on the laptop node: a SEALED message is **verified as `<name>`** when
 
 Offline devices never resolve ENS. The laptop resolves names and pushes identities to the handheld over USB (§12).
 
-Registration flow: `docs/onboarding.md` (to be written).
+Registration flow: [docs/onboarding.md](../docs/onboarding.md).
 
 ## 12. Serial bridge (laptop to radio bridge or handheld)
 
