@@ -12,7 +12,7 @@ One Docker container serves the web app and runs the relayer (`web/Dockerfile`).
    cp .env.example .env            # domain, contract address, relayer key
    chmod 600 .env
    docker compose up -d --build
-   curl http://127.0.0.1:8787/health
+   curl http://127.0.0.1:8787/health   # or your KINJO_PORT
    ```
 
 3. nginx and HTTPS:
