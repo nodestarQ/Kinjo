@@ -37,7 +37,7 @@ The laptop node is an endpoint. The radio bridge under it is just a modem.
 | ESP-NOW encryption | off (Kinjo encrypts end to end) |
 | Max frame | 250 B |
 
-Each node has a compile-time peer list. This forces the demo route:
+Each node has a compile-time peer list (`firmware/lib/kinjo/topology.h`). This forces the demo route:
 
 | Node | Peers |
 |---|---|
@@ -164,7 +164,7 @@ Registration flow: [docs/onboarding.md](../docs/onboarding.md).
 
 | Type | Name | Direction | Body |
 |---|---|---|---|
-| `0x01` | RADIO_RX | device to laptop | from MAC (6) + RSSI (i8) + packet |
+| `0x01` | RADIO_RX | device to laptop | from MAC (6) + RSSI (i8, 0 = unknown) + packet |
 | `0x02` | RADIO_TX | laptop to device | packet (sent to all peers) |
 | `0x03` | LOG | device to laptop | UTF-8 text |
 | `0x04` | PROVISION | laptop to handheld | §13 |
