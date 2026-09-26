@@ -8,6 +8,12 @@
 	let label = $state('');
 	let deviceLabel = $state('handheld');
 	let useLaptop = $state(false);
+
+	// The suggested name follows the choice. A name typed by hand stays.
+	$effect(() => {
+		const suggested = useLaptop ? 'laptop' : 'handheld';
+		if (deviceLabel === 'handheld' || deviceLabel === 'laptop' || !deviceLabel) deviceLabel = suggested;
+	});
 	let releaseLabel = $state('');
 
 	const labelOk = $derived(LABEL_PATTERN.test(label));
@@ -49,8 +55,8 @@
 		</p>
 
 		<div class="mt-3 flex gap-2">
-			<label class="flex items-center gap-1 text-sm"><input type="radio" bind:group={useLaptop} value={false} /> connected handheld</label>
-			<label class="flex items-center gap-1 text-sm"><input type="radio" bind:group={useLaptop} value={true} /> this laptop</label>
+			<label class="flex items-center gap-1 text-sm"><input type="radio" bind:group={useLaptop} value={false} /> the handheld on USB</label>
+			<label class="flex items-center gap-1 text-sm"><input type="radio" bind:group={useLaptop} value={true} /> this laptop (web app)</label>
 		</div>
 		<label class="mt-2 block text-sm text-neutral-600" for="device-label">Device name</label>
 		<input id="device-label" class="input w-full" bind:value={deviceLabel} placeholder="handheld" />

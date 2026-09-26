@@ -91,12 +91,14 @@ export class MeshNode {
 		if (!forMe || header.type !== TYPE_SEALED) return;
 
 		const done = this.reassembler.push(packet, now);
+		console.debug('[kinjo mesh] packet for me', header.messageId.toString(16), `frag ${header.fragIndex + 1}/${header.fragCount}`, done ? 'complete' : 'waiting');
 		if (done) this.open(done.header, done.body, now);
 	}
 
 	private open(header: Header, body: Uint8Array, now: number): void {
 		const base = { id: header.messageId, at: now, outgoing: false };
 		const contact = this.contacts.find((c) => nodeId(c.pub) === header.source);
+		console.debug('[kinjo mesh] opening', header.messageId.toString(16), 'from', contact?.name ?? header.source.toString(16), contact?.revoked ? '(revoked)' : '');
 		if (!contact) {
 			this.onMessage({ ...base, from: header.source.toString(16).padStart(8, '0'), status: 'unknown sender' });
 			return;
