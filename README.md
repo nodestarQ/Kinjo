@@ -43,6 +43,7 @@ _Coming soon._
 | Firmware library (runs on the laptop) | `make -C firmware/test` | needs a C++ compiler and python3 |
 | Contracts (Sepolia fork) | `cd contracts && forge test` | [contracts](contracts/README.md) |
 | Web app protocol port | `cd web/app && pnpm test` | [web/app](web/app/README.md) |
+| Relayer (local fork) | `cd web/relayer && pnpm test` | [web/relayer](web/relayer/README.md) |
 
 ## Team
 
