@@ -25,7 +25,8 @@ class VectorsUpToDate(unittest.TestCase):
                          ("drawing.json", gen_vectors.drawing_vectors),
                          ("identity.json", gen_vectors.identity_vectors),
                          ("cobs.json", gen_vectors.cobs_vectors),
-                         ("provision.json", gen_vectors.provision_vectors)]:
+                         ("provision.json", gen_vectors.provision_vectors),
+                         ("contact-update.json", gen_vectors.contact_update_vectors)]:
             self.assertEqual(load(name), json.loads(json.dumps(fn())), name)
 
 
@@ -210,6 +211,36 @@ class ProvisionTest(unittest.TestCase):
                 k.parse_provision_request(bytes.fromhex(m["body"]))
         with self.assertRaises(k.ProtocolError):
             k.parse_provision_request(bytes.fromhex(self.v["unknown_command"]))
+
+
+class ContactUpdateTest(unittest.TestCase):
+    def setUp(self):
+        self.v = load("contact-update.json")
+
+    def test_cases_roundtrip(self):
+        for c in self.v["cases"]:
+            u = k.parse_contact_update(bytes.fromhex(c["plaintext"]))
+            self.assertEqual((u["op"], u["flags"], u["pub"].hex(), u["name"]),
+                             (c["op"], c["flags"], c["pub"], c["name"]), c["label"])
+
+    def test_sealed_fits_one_packet_and_opens(self):
+        s = self.v["sealed"]
+        self.assertEqual(len(s["packets"]), 1)
+        h, body = k.parse_packet(bytes.fromhex(s["packets"][0]))
+        self.assertEqual(k.open_sealed(bytes.fromhex(s["key"]), h, body).hex(), s["plaintext"])
+
+    def test_max_size(self):
+        pt = k.contact_update_plaintext(k.OP_SET, "a" * k.MAX_NAME, bytes(k.KEY_SIZE))
+        self.assertEqual(len(pt), 100)
+
+    def test_malformed_rejected(self):
+        for m in self.v["malformed"]:
+            with self.assertRaises(k.ProtocolError, msg=m["label"]):
+                k.parse_contact_update(bytes.fromhex(m["plaintext"]))
+
+    def test_accept_rule(self):
+        for a in self.v["accept"]:
+            self.assertEqual(k.accepts_update(a["own"], a["sender"], a["target"]), a["accepted"], a["label"])
 
 
 if __name__ == "__main__":

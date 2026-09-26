@@ -20,5 +20,6 @@ python3 -m venv .venv
 | `identity.json` | IDENTITY body and packet |
 | `cobs.json` | COBS and serial frames |
 | `provision.json` | USB provisioning commands, replies, info and malformed requests |
+| `contact-update.json` | CONTACT_UPDATE plaintexts, one sealed packet, malformed updates, the accept rule |
 
 The keys in the vectors are public test keys. Never use them on a real device.

@@ -30,6 +30,12 @@ Needs Node 22.18 or newer (it runs the TypeScript directly) and `pnpm install` i
 pnpm start
 ```
 
+The staging simulator has a single identity, so after one wallet verifies, every other wallet is refused. To test again, reset the list (on-chain badges stay):
+
+```sh
+docker compose exec kinjo sh -c 'echo {} > /data/world-nullifiers.json'
+```
+
 `pnpm test` runs the World ID checks (`world.test.ts`) without network. The fork tests below need the fork.
 
 ## Test against the local fork

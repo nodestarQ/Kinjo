@@ -78,6 +78,7 @@ SEALED plaintext starts with a **kind** byte, so relays can't tell text from dra
 | `0x01` | TEXT | UTF-8, max 200 B. The handheld renders ASCII only |
 | `0x02` | DRAWING | strokes, §9 |
 | `0x03` | NOTE | text length (u8, 0 to 200) + UTF-8 text + drawing items (§9, without the kind byte) |
+| `0x04` | CONTACT_UPDATE | op (1) + flags (1) + public key (32) + name (u8 length + UTF-8). Laptop to its own handheld, §11 |
 
 ## 7. Fragmentation
 
@@ -165,7 +166,19 @@ Trust rule on the laptop node: a SEALED message is **verified as `<name>`** when
 
 **Revocation:** the owner clears `xyz.kinjo.encryption-key`. At its next ENS sync the laptop marks the device revoked and rejects its messages. Relays still forward them because they are blind.
 
-Offline devices never resolve ENS. The laptop resolves names and pushes identities to the handheld over USB (§12).
+Offline devices never resolve ENS. The laptop resolves names and pushes identities to the handheld over USB (§13) or over the radio with CONTACT_UPDATE.
+
+**CONTACT_UPDATE** carries an ENS sync result to a handheld that is out of USB reach. The laptop sends one per changed contact after each sync.
+
+| Op | Name | Effect on the handheld |
+|---|---|---|
+| `0x01` | SET | same as ADD_CONTACT (§13): add, or replace the contact with that name. Clears revoked |
+| `0x02` | REVOKE | mark the contact with that name revoked. Public key is 32 zero bytes |
+
+- Flags as in ADD_CONTACT (bit 0 = verified human). REVOKE sends `0x00`.
+- The handheld accepts it only from **its own laptop**: the message decrypts with a stored contact's key and that contact's name has the same parent as the handheld's own name (`laptop.alice.kinjo.eth` for `handheld.alice.kinjo.eth`). Anything else is dropped, as is an update for the handheld's own name.
+- A revoked contact stays in the list. Its messages are dropped until a SET for that name arrives.
+- Max plaintext 100 B, so it always fits one packet.
 
 Registration flow: [docs/onboarding.md](../docs/onboarding.md).
 

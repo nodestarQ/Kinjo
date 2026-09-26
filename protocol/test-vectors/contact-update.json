@@ -1,0 +1,92 @@
+{
+  "cases": [
+    {
+      "label": "set_verified",
+      "op": 1,
+      "flags": 1,
+      "pub": "64b101b1d0be5a8704bd078f9895001fc03e8e9f9522f188dd128d9846d48466",
+      "name": "handheld.bob.kinjo.eth",
+      "plaintext": "04010164b101b1d0be5a8704bd078f9895001fc03e8e9f9522f188dd128d9846d484661668616e6468656c642e626f622e6b696e6a6f2e657468"
+    },
+    {
+      "label": "set_plain",
+      "op": 1,
+      "flags": 0,
+      "pub": "64b101b1d0be5a8704bd078f9895001fc03e8e9f9522f188dd128d9846d48466",
+      "name": "laptop.bob.kinjo.eth",
+      "plaintext": "04010064b101b1d0be5a8704bd078f9895001fc03e8e9f9522f188dd128d9846d48466146c6170746f702e626f622e6b696e6a6f2e657468"
+    },
+    {
+      "label": "revoke",
+      "op": 2,
+      "flags": 0,
+      "pub": "0000000000000000000000000000000000000000000000000000000000000000",
+      "name": "handheld.bob.kinjo.eth",
+      "plaintext": "04020000000000000000000000000000000000000000000000000000000000000000001668616e6468656c642e626f622e6b696e6a6f2e657468"
+    }
+  ],
+  "sealed": {
+    "key": "181ac1c132525f39dfd14f6b60dbb211c7f5eae01e66fea19459e85d1884c302",
+    "source": 4105136472,
+    "destination": 3162284807,
+    "message_id": 8192,
+    "ttl": 4,
+    "nonce": "c0c0c0c0c0c0c0c0c0c0c0c0",
+    "plaintext": "04010164b101b1d0be5a8704bd078f9895001fc03e8e9f9522f188dd128d9846d484661668616e6468656c642e626f622e6b696e6a6f2e657468",
+    "packets": [
+      "01100004002000005869aff407a37cbc0001c0c0c0c0c0c0c0c0c0c0c0c0474fc46ba01697d9ae4e2f984451f46e3a9f2625caea60d74213569bdbf666cd1419f821c6aee0aa864b683958ec2aa5b03fd12495add097d907d1f0b9a934596faec42b1469305083ce"
+    ]
+  },
+  "malformed": [
+    {
+      "label": "unknown_op",
+      "plaintext": "04030064b101b1d0be5a8704bd078f9895001fc03e8e9f9522f188dd128d9846d484660f612e626f622e6b696e6a6f2e657468"
+    },
+    {
+      "label": "revoke_with_key",
+      "plaintext": "04020064b101b1d0be5a8704bd078f9895001fc03e8e9f9522f188dd128d9846d484660f612e626f622e6b696e6a6f2e657468"
+    },
+    {
+      "label": "empty_name",
+      "plaintext": "04010064b101b1d0be5a8704bd078f9895001fc03e8e9f9522f188dd128d9846d4846600"
+    },
+    {
+      "label": "short_key",
+      "plaintext": "04010064b101b1d0be5a8704bd"
+    },
+    {
+      "label": "trailing_bytes",
+      "plaintext": "04010064b101b1d0be5a8704bd078f9895001fc03e8e9f9522f188dd128d9846d484660f612e626f622e6b696e6a6f2e65746800"
+    }
+  ],
+  "accept": [
+    {
+      "label": "own_laptop",
+      "own": "handheld.alice.kinjo.eth",
+      "sender": "laptop.alice.kinjo.eth",
+      "target": "handheld.bob.kinjo.eth",
+      "accepted": true
+    },
+    {
+      "label": "other_owner",
+      "own": "handheld.alice.kinjo.eth",
+      "sender": "laptop.bob.kinjo.eth",
+      "target": "handheld.carol.kinjo.eth",
+      "accepted": false
+    },
+    {
+      "label": "about_itself",
+      "own": "handheld.alice.kinjo.eth",
+      "sender": "laptop.alice.kinjo.eth",
+      "target": "handheld.alice.kinjo.eth",
+      "accepted": false
+    },
+    {
+      "label": "parent_only_match",
+      "own": "handheld.alice.kinjo.eth",
+      "sender": "alice.kinjo.eth",
+      "target": "handheld.bob.kinjo.eth",
+      "accepted": false
+    }
+  ]
+}

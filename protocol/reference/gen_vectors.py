@@ -174,6 +174,47 @@ def provision_vectors():
             "unknown_command": hx(bytes([0x7F]))}
 
 
+def contact_update_vectors():
+    hp, lp = k.public_key(HANDHELD_PRIV), k.public_key(LAPTOP_PRIV)
+    bob = k.public_key(bytes(range(65, 97)))
+    updates = [
+        ("set_verified", k.OP_SET, {"name": "handheld.bob.kinjo.eth", "pub": bob, "flags": k.FLAG_VERIFIED}),
+        ("set_plain", k.OP_SET, {"name": "laptop.bob.kinjo.eth", "pub": bob}),
+        ("revoke", k.OP_REVOKE, {"name": "handheld.bob.kinjo.eth"}),
+    ]
+    cases = []
+    for label, op, args in updates:
+        pt = k.contact_update_plaintext(op, **args)
+        parsed = k.parse_contact_update(pt)
+        cases.append({"label": label, "op": op, "flags": parsed["flags"], "pub": hx(parsed["pub"]),
+                      "name": parsed["name"], "plaintext": hx(pt)})
+    # One sealed from the laptop to the handheld, as it goes over the radio.
+    key = k.derive_key(LAPTOP_PRIV, hp)
+    pt = bytes.fromhex(cases[0]["plaintext"])
+    nonce = bytes([0xC0]) * k.NONCE_SIZE
+    packets = k.seal(key, k.node_id(lp), k.node_id(hp), 0x2000, pt, nonce)
+    sealed = {"key": hx(key), "source": k.node_id(lp), "destination": k.node_id(hp), "message_id": 0x2000,
+              "ttl": k.DEFAULT_TTL, "nonce": hx(nonce), "plaintext": hx(pt), "packets": [hx(p) for p in packets]}
+    malformed = [
+        ("unknown_op", bytes([k.KIND_CONTACT_UPDATE, 0x03, 0]) + bob + k.encode_name("a.bob.kinjo.eth")),
+        ("revoke_with_key", bytes([k.KIND_CONTACT_UPDATE, k.OP_REVOKE, 0]) + bob + k.encode_name("a.bob.kinjo.eth")),
+        ("empty_name", bytes([k.KIND_CONTACT_UPDATE, k.OP_SET, 0]) + bob + b"\x00"),
+        ("short_key", bytes([k.KIND_CONTACT_UPDATE, k.OP_SET, 0]) + bob[:10]),
+        ("trailing_bytes", k.contact_update_plaintext(k.OP_SET, "a.bob.kinjo.eth", bob) + b"\x00"),
+    ]
+    own = HANDHELD_NAME
+    accept = [
+        ("own_laptop", LAPTOP_NAME, "handheld.bob.kinjo.eth", True),
+        ("other_owner", "laptop.bob.kinjo.eth", "handheld.carol.kinjo.eth", False),
+        ("about_itself", LAPTOP_NAME, own, False),
+        ("parent_only_match", "alice.kinjo.eth", "handheld.bob.kinjo.eth", False),
+    ]
+    return {"cases": cases, "sealed": sealed,
+            "malformed": [{"label": l, "plaintext": hx(b)} for l, b in malformed],
+            "accept": [{"label": l, "own": own, "sender": s, "target": t, "accepted": a}
+                       for l, s, t, a in accept]}
+
+
 def main():
     OUT.mkdir(exist_ok=True)
     files = {
@@ -185,6 +226,7 @@ def main():
         "identity.json": identity_vectors(),
         "cobs.json": cobs_vectors(),
         "provision.json": provision_vectors(),
+        "contact-update.json": contact_update_vectors(),
     }
     for name, data in files.items():
         (OUT / name).write_text(json.dumps(data, indent=2) + "\n")

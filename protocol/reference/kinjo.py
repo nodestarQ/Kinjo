@@ -20,6 +20,10 @@ TYPE_SEALED = 0x10
 KIND_TEXT = 0x01
 KIND_DRAWING = 0x02
 KIND_NOTE = 0x03
+KIND_CONTACT_UPDATE = 0x04
+
+OP_SET = 0x01
+OP_REVOKE = 0x02
 
 BROADCAST = 0xFFFFFFFF
 DEFAULT_TTL = 4
@@ -340,6 +344,34 @@ def decode_note(plaintext: bytes) -> tuple[str, list[tuple[int, list[tuple[int, 
     if n > MAX_TEXT or 2 + n > len(plaintext):
         raise ProtocolError("bad note text")
     return plaintext[2:2 + n].decode("utf-8"), _decode_items(plaintext, 2 + n)
+
+
+def contact_update_plaintext(op: int, name: str, pub: bytes = bytes(KEY_SIZE), flags: int = 0) -> bytes:
+    if op == OP_REVOKE:
+        pub, flags = bytes(KEY_SIZE), 0
+    elif op != OP_SET or len(pub) != KEY_SIZE:
+        raise ProtocolError("bad contact update")
+    return bytes([KIND_CONTACT_UPDATE, op, flags]) + pub + encode_name(name)
+
+
+def parse_contact_update(plaintext: bytes) -> dict:
+    """Strict: unknown ops, a key on REVOKE and trailing bytes are malformed."""
+    if len(plaintext) < 3 + KEY_SIZE or plaintext[0] != KIND_CONTACT_UPDATE:
+        raise ProtocolError("not a contact update")
+    op, flags, pub = plaintext[1], plaintext[2], plaintext[3:3 + KEY_SIZE]
+    if op not in (OP_SET, OP_REVOKE) or (op == OP_REVOKE and (flags or any(pub))):
+        raise ProtocolError("bad contact update")
+    name, end = decode_name(plaintext, 3 + KEY_SIZE)
+    if end != len(plaintext) or not name:
+        raise ProtocolError("bad contact update")
+    return {"op": op, "flags": flags, "pub": pub, "name": name}
+
+
+def accepts_update(own_name: str, sender_name: str, target_name: str) -> bool:
+    """A handheld takes a CONTACT_UPDATE only from a device under the same owner, never about itself."""
+    parent = own_name.partition(".")[2]
+    return bool(parent) and "." in own_name and sender_name != own_name \
+        and sender_name.partition(".")[2] == parent and target_name != own_name
 
 
 def decode_drawing(plaintext: bytes) -> list[list[tuple[int, int]]]:
