@@ -30,20 +30,21 @@ abstract contract KinjoSetup is Sepolia {
         KinjoOnboarding onboarding;
     }
 
-    /// Must run with `team` as the sender (broadcast or prank).
-    function _setUpKinjo(address team) internal returns (Deployment memory d) {
+    /// Must run with `team` as the sender (broadcast or prank). `salt` must be new for each run by
+    /// the same wallet: the factory refuses a salt it has seen from that sender.
+    function _setUpKinjo(address team, uint256 salt) internal returns (Deployment memory d) {
         Grant[] memory teamOnly = new Grant[](1);
         teamOnly[0] = Grant(team, RegistryRoles.ALL);
 
         // 1. kinjo.eth gets its own subname registry.
-        d.kinjoRegistry = _deployRegistry(teamOnly, 1);
+        d.kinjoRegistry = _deployRegistry(teamOnly, salt);
         ETH_REGISTRY.setSubregistry(uint256(keccak256("kinjo")), address(d.kinjoRegistry));
         d.kinjoRegistry.setParent(address(ETH_REGISTRY), "kinjo");
 
         // 2. verified.kinjo.eth: team-owned registry and resolver for World ID badges.
-        d.verifiedRegistry = _deployRegistry(teamOnly, 2);
+        d.verifiedRegistry = _deployRegistry(teamOnly, salt + 1);
         d.verifiedResolver = IPermissionedResolver(
-            FACTORY.deployProxy(RESOLVER_IMPL, 3, abi.encodeCall(IPermissionedResolver.initialize, (teamOnly, new bytes[](0))))
+            FACTORY.deployProxy(RESOLVER_IMPL, salt + 2, abi.encodeCall(IPermissionedResolver.initialize, (teamOnly, new bytes[](0))))
         );
         d.kinjoRegistry.register(
             "verified", team, address(d.verifiedRegistry), address(d.verifiedResolver), 0, type(uint64).max
@@ -69,8 +70,10 @@ abstract contract KinjoSetup is Sepolia {
 
 contract Deploy is Script, KinjoSetup {
     function run() external {
+        // Set KINJO_SALT to a new value (e.g. 10, 20) for a second deploy by the same wallet.
+        uint256 salt = vm.envOr("KINJO_SALT", uint256(1));
         vm.startBroadcast();
-        Deployment memory d = _setUpKinjo(msg.sender);
+        Deployment memory d = _setUpKinjo(msg.sender, salt);
         vm.stopBroadcast();
         console.log("kinjo.eth registry:   ", address(d.kinjoRegistry));
         console.log("verified.kinjo.eth registry:", address(d.verifiedRegistry));

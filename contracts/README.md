@@ -19,6 +19,16 @@ forge test
 
 Tests fork the latest Sepolia block through a public RPC. Set `SEPOLIA_RPC_URL` to use your own. `FORK_BLOCK` pins a block but needs an archive RPC.
 
+## Local fork
+
+For building the relayer and web app without touching the real Sepolia:
+
+```sh
+./script/local-fork.sh
+```
+
+It starts `anvil` as a Sepolia fork on `http://127.0.0.1:8545` (chain ID 31337), deploys Kinjo as the `kinjo.eth` wallet and prints `KINJO_ONBOARDING`. Any address can send transactions there without its key.
+
 ## Deploy
 
 Run once with the wallet that owns `kinjo.eth`:
@@ -27,6 +37,6 @@ Run once with the wallet that owns `kinjo.eth`:
 forge script script/Deploy.s.sol --rpc-url $SEPOLIA_RPC_URL --account <keystore name> --broadcast
 ```
 
-It sets up `kinjo.eth` and `verified.kinjo.eth` (about 5.5M gas, 0.012 Sepolia ETH) and prints the addresses. The web app and relayer need the `KinjoOnboarding` one.
+It sets up `kinjo.eth` and `verified.kinjo.eth` (about 5.5M gas, 0.012 Sepolia ETH) and prints the addresses. The web app and relayer need the `KinjoOnboarding` one. A second deploy by the same wallet needs a new salt: `KINJO_SALT=10 forge script ...`.
 
 Owner addresses must accept ERC-1155 tokens, because ENSv2 mints each name as one. Plain accounts do. A smart account without an ERC-1155 receiver can't join.

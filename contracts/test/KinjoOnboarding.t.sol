@@ -45,7 +45,7 @@ contract KinjoOnboardingTest is Test, KinjoSetup {
         alice = vm.addr(alicePk);
 
         vm.startPrank(TEAM);
-        d = _setUpKinjo(TEAM);
+        d = _setUpKinjo(TEAM, 1);
         vm.stopPrank();
         onboarding = d.onboarding;
     }
