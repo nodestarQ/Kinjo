@@ -4,14 +4,8 @@ pragma solidity ^0.8.25;
 import {Test} from "forge-std/Test.sol";
 
 import {KinjoOnboarding} from "../src/KinjoOnboarding.sol";
-import {
-    Grant,
-    IVerifiableFactory,
-    IPermissionedRegistry,
-    IUniversalResolver,
-    RegistryRoles,
-    ResolverRoles
-} from "../src/IENSv2.sol";
+import {IPermissionedRegistry, IUniversalResolver, RegistryRoles} from "../src/IENSv2.sol";
+import {KinjoSetup} from "../script/Deploy.s.sol";
 
 interface ITextResolver {
     function text(bytes32 node, string calldata key) external view returns (string memory);
@@ -19,14 +13,8 @@ interface ITextResolver {
 }
 
 /// Runs against the real ENSv2 contracts on a Sepolia fork, acting as the team wallet that owns kinjo.eth.
-contract KinjoOnboardingTest is Test {
-    uint256 constant FORK_BLOCK = 11785564;
-
+contract KinjoOnboardingTest is Test, KinjoSetup {
     address constant TEAM = 0x281770ab3731C474a7F7ab00FfE0A4A92Bf6aCaD;
-    IVerifiableFactory constant FACTORY = IVerifiableFactory(0x9e726Eb570beb6BCEb495AB8cdA7df517d4e841C);
-    IPermissionedRegistry constant ETH_REGISTRY = IPermissionedRegistry(0x657eA849311d3D5823348ddEd7C2AaAFb3EDE09E);
-    address constant USER_REGISTRY_IMPL = 0xA80338aAA8D23831cEa25E858D1774534aBb0263;
-    address constant RESOLVER_IMPL = 0x14F09Fd05d4585759e54844DC9B00147131Cf243;
     IUniversalResolver constant UR = IUniversalResolver(0xeEeEEEeE14D718C2B47D9923Deab1335E144EeEe);
 
     bytes32 constant JOIN_TYPEHASH = keccak256(
@@ -41,28 +29,25 @@ contract KinjoOnboardingTest is Test {
     bytes32 constant KEY_2 = 0x1111111111111111111111111111111111111111111111111111111111111111;
 
     KinjoOnboarding onboarding;
-    IPermissionedRegistry kinjoRegistry;
+    Deployment d;
     // Not 0xA11CE: that well-known test key has an EIP-7702 delegation on Sepolia.
     uint256 alicePk = uint256(keccak256("kinjo test alice"));
     address alice;
     address relayer = makeAddr("relayer");
 
     function setUp() public {
-        vm.createSelectFork(vm.envOr("SEPOLIA_RPC_URL", string("https://ethereum-sepolia-rpc.publicnode.com")), FORK_BLOCK);
+        // Public RPCs only keep recent state, so fork the latest block unless FORK_BLOCK is set
+        // (needs an archive RPC in SEPOLIA_RPC_URL).
+        string memory rpc = vm.envOr("SEPOLIA_RPC_URL", string("https://ethereum-sepolia-rpc.publicnode.com"));
+        uint256 forkBlock = vm.envOr("FORK_BLOCK", uint256(0));
+        if (forkBlock == 0) vm.createSelectFork(rpc);
+        else vm.createSelectFork(rpc, forkBlock);
         alice = vm.addr(alicePk);
 
-        // Same steps as script/Deploy.s.sol.
         vm.startPrank(TEAM);
-        Grant[] memory grants = new Grant[](1);
-        grants[0] = Grant(TEAM, RegistryRoles.ALL);
-        kinjoRegistry = IPermissionedRegistry(
-            FACTORY.deployProxy(USER_REGISTRY_IMPL, 1, abi.encodeCall(IPermissionedRegistry.initialize, (grants)))
-        );
-        ETH_REGISTRY.setSubregistry(uint256(keccak256("kinjo")), address(kinjoRegistry));
-        kinjoRegistry.setParent(address(ETH_REGISTRY), "kinjo");
-        onboarding = new KinjoOnboarding(TEAM, FACTORY, kinjoRegistry, USER_REGISTRY_IMPL, RESOLVER_IMPL);
-        kinjoRegistry.grantRootRoles(RegistryRoles.REGISTRAR | RegistryRoles.UNREGISTER, address(onboarding));
+        d = _setUpKinjo(TEAM);
         vm.stopPrank();
+        onboarding = d.onboarding;
     }
 
     // --- helpers ---
@@ -156,7 +141,7 @@ contract KinjoOnboardingTest is Test {
 
     function test_join_ownerHoldsAllRolesAndContractOnlyItsOwn() public {
         _join();
-        (address registry,,) = onboarding.accountOf(alice);
+        (address registry,,,) = onboarding.accountOf(alice);
         assertTrue(IPermissionedRegistry(registry).hasRootRoles(RegistryRoles.ALL, alice));
         assertTrue(
             IPermissionedRegistry(registry).hasRootRoles(
@@ -196,7 +181,7 @@ contract KinjoOnboardingTest is Test {
 
     function test_join_rejectsTakenAndInvalidLabels() public {
         _join();
-        address bob = makeAddr("bob");
+        address bob = vm.addr(uint256(keccak256("kinjo test bob"))); // makeAddr("bob") has code on Sepolia
         vm.startPrank(bob);
         vm.expectRevert(KinjoOnboarding.LabelTaken.selector);
         onboarding.join(bob, "alice", "node1", KEY_2, 0, "");
@@ -236,7 +221,7 @@ contract KinjoOnboardingTest is Test {
         vm.prank(relayer);
         onboarding.revokeDevice(alice, "handheld", deadline, sig);
 
-        (address registry,,) = onboarding.accountOf(alice);
+        (address registry,,,) = onboarding.accountOf(alice);
         assertEq(IPermissionedRegistry(registry).getResolver("handheld"), address(0));
         assertEq(_text("handheld.alice.kinjo.eth", "xyz.kinjo.encryption-key"), "");
 
@@ -268,7 +253,7 @@ contract KinjoOnboardingTest is Test {
 
     function test_ownerKeepsControlWithoutTheContract() public {
         _join();
-        (address registry,,) = onboarding.accountOf(alice);
+        (address registry,,,) = onboarding.accountOf(alice);
         vm.prank(alice);
         IPermissionedRegistry(registry).unregister(uint256(keccak256("handheld")));
         assertEq(IPermissionedRegistry(registry).getResolver("handheld"), address(0));
@@ -299,11 +284,67 @@ contract KinjoOnboardingTest is Test {
         assertEq(address(onboarding).balance, 0.001 ether);
     }
 
-    function test_verifiedHuman_teamOnly() public {
-        vm.expectRevert();
-        onboarding.setVerifiedHuman(alice, true);
+    // --- World ID badge: alice.verified.kinjo.eth, owned by the team ---
+
+    function _verify() internal {
+        _join();
         vm.prank(TEAM);
         onboarding.setVerifiedHuman(alice, true);
-        assertTrue(onboarding.verifiedHuman(alice));
+    }
+
+    function test_badge_resolvesAndMatchesTheOwnerName() public {
+        _verify();
+        assertEq(_text("alice.verified.kinjo.eth", "xyz.kinjo.verified-human"), "world");
+        assertEq(_addr("alice.verified.kinjo.eth"), alice);
+        assertEq(_addr("alice.verified.kinjo.eth"), _addr("alice.kinjo.eth")); // the reader's check
+        (,,, bool verified) = onboarding.accountOf(alice);
+        assertTrue(verified);
+    }
+
+    function test_badge_teamOnly() public {
+        _join();
+        vm.prank(alice);
+        vm.expectRevert();
+        onboarding.setVerifiedHuman(alice, true);
+    }
+
+    function test_badge_ownerCannotForgeIt() public {
+        _join();
+        bytes memory badge = onboarding.dnsName("alice", "verified");
+        vm.startPrank(alice);
+        vm.expectRevert();
+        d.verifiedResolver.setText(badge, "xyz.kinjo.verified-human", "world");
+        vm.expectRevert();
+        d.verifiedRegistry.register("alice", alice, address(0), address(d.verifiedResolver), 0, type(uint64).max);
+        vm.stopPrank();
+        assertEq(_text("alice.verified.kinjo.eth", "xyz.kinjo.verified-human"), "");
+    }
+
+    function test_badge_removeClearsRecords() public {
+        _verify();
+        vm.prank(TEAM);
+        onboarding.setVerifiedHuman(alice, false);
+        assertEq(d.verifiedRegistry.getResolver("alice"), address(0));
+        assertEq(_text("alice.verified.kinjo.eth", "xyz.kinjo.verified-human"), "");
+        assertEq(_addr("alice.verified.kinjo.eth"), address(0));
+    }
+
+    function test_badge_goesAwayOnRelease_andDoesNotCarryToTheNextClaimer() public {
+        _verify();
+        vm.prank(TEAM);
+        onboarding.release("alice");
+        assertEq(_text("alice.verified.kinjo.eth", "xyz.kinjo.verified-human"), "");
+
+        address bob = vm.addr(uint256(keccak256("kinjo test bob"))); // makeAddr("bob") has code on Sepolia
+        vm.prank(bob);
+        onboarding.join(bob, "alice", "handheld", KEY_2, 0, "");
+        assertEq(_addr("alice.kinjo.eth"), bob);
+        assertTrue(_addr("alice.verified.kinjo.eth") != bob);
+    }
+
+    function test_join_cannotClaimTheBadgeNamespace() public {
+        vm.prank(alice);
+        vm.expectRevert();
+        onboarding.join(alice, "verified", "handheld", KEY_1, 0, "");
     }
 }

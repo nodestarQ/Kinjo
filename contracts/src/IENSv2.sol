@@ -33,8 +33,9 @@ interface IPermissionedRegistry {
 
 interface IPermissionedResolver {
     function initialize(Grant[] calldata grants, bytes[] calldata calls) external;
-    function setText(bytes calldata name, string calldata key, string calldata value) external;
     function setAddress(bytes calldata name, uint256 coinType, bytes calldata addressBytes) external;
+    function setText(bytes calldata name, string calldata key, string calldata value) external;
+    function grantRootRoles(uint256 roleBitmap, address account) external returns (bool);
 }
 
 interface IUniversalResolver {

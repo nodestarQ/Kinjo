@@ -13,6 +13,8 @@ kinjo.eth                    team, registry owned by the team wallet
   alice.kinjo.eth            owner, claimed for free, own registry and resolver
     handheld.alice.kinjo.eth device, key in a text record
     laptop.alice.kinjo.eth   device
+  verified.kinjo.eth         team, World ID badges
+    alice.verified.kinjo.eth badge for alice, owned by the team
 ```
 
 - ENSv2 on Sepolia, contracts tagged `sepolia-deployment-2026-09-15`.
@@ -36,8 +38,8 @@ One contract, deployed once by the team. It holds the registrar and unregister r
 | `join(label, deviceLabel, deviceKey)` | deploys the owner's registry and resolver, registers `label.kinjo.eth`, links the registry, registers the first device, writes its records |
 | `addDevice(deviceLabel, deviceKey)` | registers another device under the owner and writes its records |
 | `revokeDevice(deviceLabel)` | unregisters the device and clears `xyz.kinjo.encryption-key` (ENSv2 falls back to the parent's resolver, so clearing the record is needed too) |
-| `setVerifiedHuman(owner, bool)` | team only, sets the World ID badge (kept in the contract, see below) |
-| `release(label)` | team only, unregisters `label.kinjo.eth` so the name can be claimed again |
+| `setVerifiedHuman(owner, bool)` | team only, registers or removes the owner's badge name (see World ID below) |
+| `release(label)` | team only, unregisters `label.kinjo.eth` and its badge so the name can be claimed again |
 
 Each user function has two ways in:
 
@@ -98,7 +100,18 @@ The owner clicks "Revoke" on a device (sponsored `revokeDevice`). At its next EN
 
 ## World ID (optional badge)
 
-Claims stay open without it. After joining, the owner can click "Verify with World ID". The relayer checks the proof and calls `setVerifiedHuman(owner, true)`. The badge lives in the contract (`verifiedHuman(owner)`), not in a text record: the owner holds every role on their own resolver and could write such a record themselves. The badge is pushed to devices with the contact list and powers the "verified humans only" filter ([design.md](design.md#who-you-hear-from)). Nothing is blocked without it.
+Claims stay open without it. After joining, the owner can click "Verify with World ID". The relayer checks the proof and calls `setVerifiedHuman(owner, true)`, which registers `alice.verified.kinjo.eth`:
+
+| Record | Value |
+|---|---|
+| `addr` | the owner's address |
+| `xyz.kinjo.verified-human` | `world` |
+
+- The team owns `verified.kinjo.eth` and every name under it. Owners hold no roles there, so they can't fake a badge. They keep full control of their own name.
+- A reader accepts the badge only if `addr` of `alice.verified.kinjo.eth` equals `addr` of `alice.kinjo.eth`. That ties it to the person, so a badge never carries over when a released name is claimed by someone else.
+- The badge isn't a record on `alice.kinjo.eth` because Alice holds every role on her own resolver and could write it herself.
+
+The badge is pushed to devices with the contact list and powers the "verified humans only" filter ([design.md](design.md#who-you-hear-from)). Nothing is blocked without it.
 
 ## Costs
 

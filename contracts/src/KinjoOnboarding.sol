@@ -25,6 +25,7 @@ contract KinjoOnboarding is Ownable, EIP712 {
         IPermissionedRegistry registry; // device subnames live here
         IPermissionedResolver resolver; // records of the owner name and all devices
         string label; // "alice" for alice.kinjo.eth
+        bool verifiedHuman; // has alice.verified.kinjo.eth
     }
 
     bytes32 private constant JOIN_TYPEHASH = keccak256(
@@ -39,6 +40,7 @@ contract KinjoOnboarding is Ownable, EIP712 {
     string public constant KEY_KIND = "xyz.kinjo.kind";
     string public constant KEY_PROTOCOL = "xyz.kinjo.protocol";
     string public constant PROTOCOL = "kinjo/0.1";
+    string public constant KEY_VERIFIED_HUMAN = "xyz.kinjo.verified-human";
     uint64 private constant NO_EXPIRY = type(uint64).max;
     uint256 private constant COIN_TYPE_ETH = 60;
 
@@ -46,13 +48,16 @@ contract KinjoOnboarding is Ownable, EIP712 {
     IPermissionedRegistry public immutable kinjoRegistry;
     address public immutable registryImpl;
     address public immutable resolverImpl;
+    /// Registry and resolver of verified.kinjo.eth, owned by the team. Owners hold no roles there,
+    /// so a badge name like alice.verified.kinjo.eth can't be forged.
+    IPermissionedRegistry public immutable verifiedRegistry;
+    IPermissionedResolver public immutable verifiedResolver;
 
     uint256 public fee;
     uint256 private _deployCount;
     mapping(address owner => Account) private _accounts;
     mapping(bytes32 labelHash => address owner) public ownerOfLabel;
     mapping(address owner => uint256) public nonces;
-    mapping(address owner => bool) public verifiedHuman;
 
     event Joined(address indexed owner, string label, address registry, address resolver);
     event DeviceAdded(address indexed owner, string deviceLabel, bytes32 deviceKey);
@@ -74,12 +79,16 @@ contract KinjoOnboarding is Ownable, EIP712 {
         IVerifiableFactory factory_,
         IPermissionedRegistry kinjoRegistry_,
         address registryImpl_,
-        address resolverImpl_
+        address resolverImpl_,
+        IPermissionedRegistry verifiedRegistry_,
+        IPermissionedResolver verifiedResolver_
     ) Ownable(initialOwner) EIP712("KinjoOnboarding", "1") {
         factory = factory_;
         kinjoRegistry = kinjoRegistry_;
         registryImpl = registryImpl_;
         resolverImpl = resolverImpl_;
+        verifiedRegistry = verifiedRegistry_;
+        verifiedResolver = verifiedResolver_;
     }
 
     // --- Owner actions ---
@@ -101,7 +110,7 @@ contract KinjoOnboarding is Ownable, EIP712 {
         if (ownerOfLabel[labelHash] != address(0)) revert LabelTaken();
 
         (IPermissionedRegistry registry, IPermissionedResolver resolver) = _deployAccount(owner);
-        _accounts[owner] = Account(registry, resolver, label);
+        _accounts[owner] = Account(registry, resolver, label, false);
         ownerOfLabel[labelHash] = owner;
 
         // register() mints a token to the owner, which can call back into the owner's code.
@@ -157,16 +166,29 @@ contract KinjoOnboarding is Ownable, EIP712 {
         bytes32 labelHash = keccak256(bytes(label));
         address owner = ownerOfLabel[labelHash];
         if (owner == address(0)) revert NotJoined();
+        if (_accounts[owner].verifiedHuman) _removeBadge(label);
         delete _accounts[owner];
         delete ownerOfLabel[labelHash];
         kinjoRegistry.unregister(uint256(labelHash));
         emit Released(owner, label);
     }
 
-    /// @notice Set by the relayer after it checked a World ID proof. Kept here, not in the owner's
-    /// resolver, because the owner holds every role there and could write the record themselves.
+    /// @notice Set by the relayer after it checked a World ID proof. Registers or removes
+    /// `label.verified.kinjo.eth`, owned by the team, with `addr` = the owner's address and
+    /// `xyz.kinjo.verified-human` = "world". Readers accept the badge only if that addr equals the
+    /// addr of `label.kinjo.eth`, which ties it to the person and not just the label.
     function setVerifiedHuman(address owner, bool verified) external onlyOwner {
-        verifiedHuman[owner] = verified;
+        Account storage account = _joined(owner);
+        if (account.verifiedHuman == verified) return;
+        account.verifiedHuman = verified;
+        if (verified) {
+            verifiedRegistry.register(account.label, msg.sender, address(0), address(verifiedResolver), 0, NO_EXPIRY);
+            bytes memory name = _badgeName(account.label);
+            verifiedResolver.setAddress(name, COIN_TYPE_ETH, abi.encodePacked(owner));
+            verifiedResolver.setText(name, KEY_VERIFIED_HUMAN, "world");
+        } else {
+            _removeBadge(account.label);
+        }
         emit VerifiedHumanSet(owner, verified);
     }
 
@@ -181,9 +203,13 @@ contract KinjoOnboarding is Ownable, EIP712 {
 
     // --- Views ---
 
-    function accountOf(address owner) external view returns (address registry, address resolver, string memory label) {
+    function accountOf(address owner)
+        external
+        view
+        returns (address registry, address resolver, string memory label, bool verifiedHuman)
+    {
         Account storage a = _accounts[owner];
-        return (address(a.registry), address(a.resolver), a.label);
+        return (address(a.registry), address(a.resolver), a.label, a.verifiedHuman);
     }
 
     function domainSeparator() external view returns (bytes32) {
@@ -252,6 +278,19 @@ contract KinjoOnboarding is Ownable, EIP712 {
         emit DeviceAdded(owner, deviceLabel, deviceKey);
     }
 
+    /// @dev Records are cleared too: after unregister, lookups fall back to verified.kinjo.eth's
+    /// resolver, which is the same resolver that holds the badge records.
+    function _removeBadge(string memory label) private {
+        verifiedRegistry.unregister(uint256(keccak256(bytes(label))));
+        bytes memory name = _badgeName(label);
+        verifiedResolver.setAddress(name, COIN_TYPE_ETH, "");
+        verifiedResolver.setText(name, KEY_VERIFIED_HUMAN, "");
+    }
+
+    function _badgeName(string memory label) private pure returns (bytes memory) {
+        return _dnsName(label, "verified");
+    }
+
     function _authorize(address owner, bytes32 structHash, uint256 deadline, bytes calldata signature) private {
         if (msg.value != fee) revert WrongFee();
         if (msg.sender != owner) {
@@ -289,8 +328,9 @@ contract KinjoOnboarding is Ownable, EIP712 {
         return abi.encodePacked(uint8(bytes(label).length), label, hex"056b696e6a6f", hex"03657468", hex"00");
     }
 
-    function _dnsName(string memory deviceLabel, string memory label) private pure returns (bytes memory) {
+    /// @dev `child.label.kinjo.eth`, e.g. a device or a badge name.
+    function _dnsName(string memory child, string memory label) private pure returns (bytes memory) {
         // forge-lint: disable-next-line(unsafe-typecast)
-        return abi.encodePacked(uint8(bytes(deviceLabel).length), deviceLabel, _dnsName(label));
+        return abi.encodePacked(uint8(bytes(child).length), child, _dnsName(label));
     }
 }
