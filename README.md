@@ -41,6 +41,7 @@ _Coming soon._
 |---|---|---|
 | Protocol reference, test vectors | `cd protocol/reference && .venv/bin/python -m unittest` | [protocol/reference](protocol/reference/README.md) |
 | Firmware library (runs on the laptop) | `make -C firmware/test` | needs a C++ compiler and python3 |
+| Contracts (Sepolia fork) | `cd contracts && forge test` | [contracts](contracts/README.md) |
 
 ## Team
 

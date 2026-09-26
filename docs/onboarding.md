@@ -26,7 +26,6 @@ Records:
 | device | `xyz.kinjo.encryption-key` | X25519 public key, `0x` hex |
 | device | `xyz.kinjo.kind` | `device` |
 | device | `xyz.kinjo.protocol` | `kinjo/0.1` |
-| owner | `xyz.kinjo.verified-human` | `world` (optional, see World ID below) |
 
 ## Contract: `KinjoOnboarding`
 
@@ -37,7 +36,7 @@ One contract, deployed once by the team. It holds the registrar and unregister r
 | `join(label, deviceLabel, deviceKey)` | deploys the owner's registry and resolver, registers `label.kinjo.eth`, links the registry, registers the first device, writes its records |
 | `addDevice(deviceLabel, deviceKey)` | registers another device under the owner and writes its records |
 | `revokeDevice(deviceLabel)` | unregisters the device and clears `xyz.kinjo.encryption-key` (ENSv2 falls back to the parent's resolver, so clearing the record is needed too) |
-| `setVerified(owner)` | team only, writes `xyz.kinjo.verified-human` |
+| `setVerifiedHuman(owner, bool)` | team only, sets the World ID badge (kept in the contract, see below) |
 | `release(label)` | team only, unregisters `label.kinjo.eth` so the name can be claimed again |
 
 Each user function has two ways in:
@@ -99,7 +98,7 @@ The owner clicks "Revoke" on a device (sponsored `revokeDevice`). At its next EN
 
 ## World ID (optional badge)
 
-Claims stay open without it. After joining, the owner can click "Verify with World ID". The relayer checks the proof and calls `setVerified(owner)`, which writes `xyz.kinjo.verified-human` on `alice.kinjo.eth`. The badge is pushed to devices with the contact list and powers the "verified humans only" filter ([design.md](design.md#who-you-hear-from)). Nothing is blocked without it.
+Claims stay open without it. After joining, the owner can click "Verify with World ID". The relayer checks the proof and calls `setVerifiedHuman(owner, true)`. The badge lives in the contract (`verifiedHuman(owner)`), not in a text record: the owner holds every role on their own resolver and could write such a record themselves. The badge is pushed to devices with the contact list and powers the "verified humans only" filter ([design.md](design.md#who-you-hear-from)). Nothing is blocked without it.
 
 ## Costs
 

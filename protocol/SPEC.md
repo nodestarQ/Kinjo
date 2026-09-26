@@ -195,7 +195,7 @@ info = public key (32) + protocol version (1, 0x01) + contacts (u8) + blocks (u1
        + own name
 ```
 
-- Contact flags: bit 0 = verified human (owner has `xyz.kinjo.verified-human`, see onboarding). Other bits 0.
+- Contact flags: bit 0 = verified human (the owner's World ID badge, see onboarding). Other bits 0.
 - ADD_CONTACT with a name that's already stored replaces that contact.
 - WIPE makes a new X25519 key pair and clears the name, contacts and block list. The old private key is overwritten.
 - The block list is managed on the device only. Nothing here reads or changes it except WIPE.
