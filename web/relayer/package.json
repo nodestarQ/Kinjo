@@ -4,9 +4,10 @@
 	"type": "module",
 	"scripts": {
 		"start": "node server.ts",
-		"test": "node --test server.test.ts"
+		"test": "node --test server.test.ts world.test.ts"
 	},
 	"dependencies": {
+		"@worldcoin/idkit-server": "1.1.1",
 		"viem": "^2.56.9"
 	},
 	"engines": {

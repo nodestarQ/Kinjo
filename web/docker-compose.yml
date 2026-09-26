@@ -13,6 +13,16 @@ services:
       KINJO_RPC_URL: ${KINJO_RPC_URL:-https://ethereum-sepolia-rpc.publicnode.com}
       # The live site plus local dev (pnpm dev) may call the relayer.
       ALLOWED_ORIGIN: https://${KINJO_DOMAIN},http://127.0.0.1:5173,http://localhost:5173
+      # World ID badge (optional). Without these the Verify button says it's not set up.
+      WORLD_APP_ID: ${WORLD_APP_ID:-}
+      WORLD_RP_ID: ${WORLD_RP_ID:-}
+      WORLD_RP_SIGNING_KEY: ${WORLD_RP_SIGNING_KEY:-}
+      WORLD_ENVIRONMENT: ${WORLD_ENVIRONMENT:-staging}
+      WORLD_STAGING_TOKEN: ${WORLD_STAGING_TOKEN:-}
+    volumes:
+      - kinjo-data:/data # World ID nullifiers: one human, one name
     ports:
       - "127.0.0.1:${KINJO_PORT:-8787}:8787" # only nginx on the host reaches it
     restart: unless-stopped
+volumes:
+  kinjo-data:

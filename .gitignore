@@ -47,3 +47,6 @@ contracts/dependencies/
 contracts/broadcast/*/31337/
 contracts/broadcast/**/dry-run/
 contracts/broadcast/**/run-[0-9]*.json
+
+# World ID nullifiers of a local relayer
+web/relayer/data/

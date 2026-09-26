@@ -25,12 +25,13 @@ FROM node:22-alpine
 WORKDIR /srv/web/relayer
 COPY relayer/package.json ./
 RUN npm install --omit=dev --no-audit --no-fund
-COPY relayer/server.ts ./
+COPY relayer/server.ts relayer/world.ts ./
 # The relayer imports the request format from the app source; viem resolves from the relayer.
 COPY app/src/lib/kinjo/onboarding.ts /srv/web/app/src/lib/kinjo/onboarding.ts
 RUN ln -s /srv/web/relayer/node_modules /srv/web/app/node_modules
 COPY --from=app /src/app/build /srv/web/static
-ENV STATIC_DIR=/srv/web/static PORT=8787
+ENV STATIC_DIR=/srv/web/static PORT=8787 WORLD_NULLIFIER_FILE=/data/world-nullifiers.json
+RUN mkdir /data && chown node /data
 USER node
 EXPOSE 8787
 CMD ["node", "server.ts"]

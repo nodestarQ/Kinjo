@@ -1,5 +1,6 @@
 // Relayer: submits owner-signed KinjoOnboarding requests and pays the gas (docs/onboarding.md).
 // POST /relay checks the request, simulates the call and sends it from the team wallet.
+// POST /world/context and /world/verify: World ID badge (world.ts), if WORLD_* is set.
 
 import { readFile } from 'node:fs/promises';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
@@ -19,6 +20,7 @@ import { privateKeyToAccount } from 'viem/accounts';
 import { sepolia } from 'viem/chains';
 
 import { contractCall, onboardingAbi, validateRequest, type RelayRequest } from '../app/src/lib/kinjo/onboarding.ts';
+import { createWorld, worldConfigFromEnv, type WorldConfig } from './world.ts';
 
 export interface Config {
 	rpcUrl: string;
@@ -36,6 +38,8 @@ export interface Config {
 	maxDeadlineSeconds: number;
 	/** Built web app to serve on all other paths (the Docker image sets it). Empty: API only. */
 	staticDir: string;
+	/** World ID badge. Null: not set up, the /world endpoints answer 503. */
+	world: WorldConfig | null;
 }
 
 export function configFromEnv(env = process.env): Config {
@@ -51,7 +55,8 @@ export function configFromEnv(env = process.env): Config {
 		rateLimit: Number(env.RATE_LIMIT ?? 10),
 		rateWindowMs: 10 * 60 * 1000,
 		maxDeadlineSeconds: 3600,
-		staticDir: env.STATIC_DIR ?? ''
+		staticDir: env.STATIC_DIR ?? '',
+		world: worldConfigFromEnv(env)
 	};
 }
 
@@ -98,7 +103,34 @@ export function createRelayer(config: Config) {
 		}
 	}
 
-	return { relay, address: wallet.account.address };
+	/** The owner's Kinjo account, or null if they have no name. */
+	async function accountOf(owner: Address) {
+		const [, , label, verifiedHuman] = await publicClient.readContract({
+			address: config.onboarding,
+			abi: onboardingAbi,
+			functionName: 'accountOf',
+			args: [owner]
+		});
+		return label ? { label, verifiedHuman } : null;
+	}
+
+	/** Registers label.verified.kinjo.eth for the owner. Only after a checked World ID proof. */
+	async function setVerified(owner: Address): Promise<Hex> {
+		try {
+			const { request: tx } = await publicClient.simulateContract({
+				address: config.onboarding,
+				abi: onboardingAbi,
+				functionName: 'setVerifiedHuman',
+				args: [owner, true],
+				account: wallet.account
+			});
+			return await wallet.writeContract(tx);
+		} catch (e) {
+			throw new Error(revertReason(e));
+		}
+	}
+
+	return { relay, account: accountOf, setVerified, rateLimited, address: wallet.account.address };
 }
 
 function revertReason(e: unknown): string {
@@ -114,7 +146,7 @@ async function readJson(req: IncomingMessage): Promise<unknown> {
 	let body = '';
 	for await (const chunk of req) {
 		body += chunk;
-		if (body.length > 10_000) throw new Error('request too large');
+		if (body.length > 50_000) throw new Error('request too large');
 	}
 	return JSON.parse(body);
 }
@@ -126,7 +158,9 @@ const TYPES: Record<string, string> = {
 	'.svg': 'image/svg+xml',
 	'.json': 'application/json',
 	'.png': 'image/png',
-	'.txt': 'text/plain'
+	'.txt': 'text/plain',
+	'.wasm': 'application/wasm',
+	'.webmanifest': 'application/manifest+json'
 };
 
 /** Serves the static app. Unknown paths get index.html (client-side routing). */
@@ -147,6 +181,7 @@ async function serveStatic(dir: string, url: string, res: ServerResponse) {
 
 export function startServer(config: Config, port: number) {
 	const relayer = createRelayer(config);
+	const world = config.world ? createWorld(config.world, relayer) : null;
 	const server = createServer(async (req: IncomingMessage, res: ServerResponse) => {
 		const origins = config.allowedOrigin.split(',').map((o) => o.trim());
 		const origin = req.headers.origin ?? '';
@@ -170,6 +205,23 @@ export function startServer(config: Config, port: number) {
 				return send(200, { hash });
 			} catch (e) {
 				console.log(`rejected ${body?.action ?? '?'} for ${body?.owner ?? '?'}: ${(e as Error).message}`);
+				return send(400, { error: (e as Error).message });
+			}
+		}
+		if (req.method === 'POST' && req.url?.startsWith('/world/')) {
+			if (!world) return send(503, { error: 'World ID is not set up on this deployment' });
+			let owner = '?';
+			try {
+				if (req.url === '/world/context') return send(200, world.context());
+				if (req.url !== '/world/verify') return send(404, { error: 'not found' });
+				const body = (await readJson(req)) as { owner?: string; proof?: object };
+				owner = String(body.owner);
+				if (relayer.rateLimited(owner.toLowerCase())) throw new Error('too many requests, try again in a few minutes');
+				const result = await world.verify(owner, body.proof ?? {});
+				console.log(`world verified ${owner}: ${result.hash ?? 'already verified'}`);
+				return send(200, result);
+			} catch (e) {
+				console.log(`world rejected ${owner}: ${(e as Error).message}`);
 				return send(400, { error: (e as Error).message });
 			}
 		}

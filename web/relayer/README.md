@@ -21,10 +21,16 @@ Needs Node 22.18 or newer (it runs the TypeScript directly) and `pnpm install` i
 | `KINJO_RPC_URL` | default: public Sepolia RPC |
 | `ALLOWED_ORIGIN` | web app origins, comma-separated (default `*`) |
 | `PORT` | default `8787` |
+| `WORLD_APP_ID`, `WORLD_RP_ID`, `WORLD_RP_SIGNING_KEY` | World ID badge, from [developer.world.org](https://developer.world.org). Unset: `/world/*` answers 503 |
+| `WORLD_ENVIRONMENT` | `staging` (default, works with the [simulator](https://simulator.worldcoin.org)) or `production` |
+| `WORLD_STAGING_TOKEN` | staging only: token from opening a staging verification window in the Developer Portal (24 h) |
+| `WORLD_NULLIFIER_FILE` | default `data/world-nullifiers.json` |
 
 ```sh
 pnpm start
 ```
+
+`pnpm test` runs the World ID checks (`world.test.ts`) without network. The fork tests below need the fork.
 
 ## Test against the local fork
 
