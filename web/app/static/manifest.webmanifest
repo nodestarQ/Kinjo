@@ -1,0 +1,13 @@
+{
+	"name": "Kinjo",
+	"short_name": "Kinjo",
+	"description": "Neighborhood chat without internet. Trust from ENS.",
+	"start_url": "/",
+	"display": "standalone",
+	"background_color": "#e9edf1",
+	"theme_color": "#8ea0b3",
+	"icons": [
+		{ "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+		{ "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+	]
+}
