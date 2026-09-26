@@ -91,9 +91,25 @@ def drawing_vectors():
     out = []
     for strokes in cases:
         enc = k.encode_drawing(strokes)
-        out.append({"strokes": strokes, "plaintext": hx(enc),
-                    "decoded": [[list(p) for p in s] for s in k.decode_drawing(enc)]})
-    return {"cases": out}
+        out.append({"strokes": strokes, "colors": [0] * len(strokes), "plaintext": hx(enc),
+                    "decoded": [[list(p) for p in s] for s in k.decode_drawing(enc)],
+                    "decoded_colors": [c for c, _ in k.decode_drawing_colored(enc)]})
+    # Colors: red, red again (no marker), then blue.
+    strokes = [[(10, 10), (20, 20)], [(30, 30), (40, 40)], [(50, 50), (60, 70)]]
+    enc = k.encode_drawing(strokes, [1, 1, 5])
+    out.append({"strokes": strokes, "colors": [1, 1, 5], "plaintext": hx(enc),
+                "decoded": [[list(p) for p in s] for s in k.decode_drawing(enc)],
+                "decoded_colors": [c for c, _ in k.decode_drawing_colored(enc)]})
+    notes = []
+    for text, strokes, colors in (("gm Tokyo", [[(10, 10), (40, 30)], [(50, 50), (90, 60)]], [0, 1]),
+                                  ("only text", [], []),
+                                  ("", [[(5, 5), (300, 200)]], [5])):
+        pt = k.note_plaintext(text, strokes, colors)
+        t, colored = k.decode_note(pt)
+        notes.append({"text": text, "strokes": strokes, "colors": colors, "plaintext": hx(pt),
+                      "decoded": [[list(p) for p in s] for _, s in colored],
+                      "decoded_colors": [c for c, _ in colored]})
+    return {"cases": out, "palette": k.PALETTE, "notes": notes}
 
 
 def identity_vectors():

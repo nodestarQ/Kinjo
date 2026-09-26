@@ -77,6 +77,7 @@ SEALED plaintext starts with a **kind** byte, so relays can't tell text from dra
 |---|---|---|
 | `0x01` | TEXT | UTF-8, max 200 B. The handheld renders ASCII only |
 | `0x02` | DRAWING | strokes, §9 |
+| `0x03` | NOTE | text length (u8, 0 to 200) + UTF-8 text + drawing items (§9, without the kind byte) |
 
 ## 7. Fragmentation
 
@@ -101,17 +102,30 @@ The same seen cache stops replays at the destination for as long as the entry li
 
 ## 9. Drawing
 
-- Canvas 320 x 240, origin top left, one color, one pen width.
-- Plaintext after the kind byte is a list of strokes until the end:
+- Canvas 320 x 240, origin top left, one pen width.
+- Plaintext after the kind byte is a list of items until the end:
 
 ```text
 stroke = point_count (u8, 1 to 255)
          x0 (u16) y0 (u16)
          (point_count - 1) x [dx (i8) dy (i8)]
+color  = 0x00 + palette index (u8, 0 to 7)
 ```
 
+- A color item applies to the strokes after it. Drawings start with color 0. Encoders only write it when the color changes.
 - If a step is larger than 127 in either axis, the encoder adds points in between. A stroke longer than 255 points continues in a new stroke that starts at its last point.
 - Max plaintext: 16 fragments x 232 B minus 29 B overhead.
+
+| Index | Color | RGB |
+|---|---|---|
+| 0 | ink | `#26313d` |
+| 1 | red | `#d8453b` |
+| 2 | orange | `#e0832f` |
+| 3 | yellow | `#d9b92b` |
+| 4 | green | `#2f9e5b` |
+| 5 | blue | `#3d6fd6` |
+| 6 | purple | `#8a57d6` |
+| 7 | pink | `#d4548e` |
 
 ## 10. Crypto
 

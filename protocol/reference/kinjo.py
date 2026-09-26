@@ -19,6 +19,7 @@ TYPE_SEALED = 0x10
 
 KIND_TEXT = 0x01
 KIND_DRAWING = 0x02
+KIND_NOTE = 0x03
 
 BROADCAST = 0xFFFFFFFF
 DEFAULT_TTL = 4
@@ -36,6 +37,8 @@ MAX_NAME = 64
 
 CANVAS_W = 320
 CANVAS_H = 240
+COLOR_MARKER = 0x00
+PALETTE = ["#26313d", "#d8453b", "#e0832f", "#d9b92b", "#2f9e5b", "#3d6fd6", "#8a57d6", "#d4548e"]
 
 REASSEMBLY_SLOTS = 4
 REASSEMBLY_TIMEOUT = 5.0
@@ -263,12 +266,20 @@ def _steps(a: tuple[int, int], b: tuple[int, int]) -> list[tuple[int, int]]:
     return [(a[0] + dx * i // n, a[1] + dy * i // n) for i in range(1, n + 1)]
 
 
-def encode_drawing(strokes: list[list[tuple[int, int]]]) -> bytes:
-    """Strokes are lists of (x, y). Big jumps get intermediate points, long strokes get split."""
+def encode_drawing(strokes: list[list[tuple[int, int]]], colors: list[int] | None = None) -> bytes:
+    """Strokes are lists of (x, y), `colors` the palette index per stroke (default 0).
+    Big jumps get intermediate points, long strokes get split."""
     out = bytearray([KIND_DRAWING])
-    for stroke in strokes:
+    current = 0
+    for n, stroke in enumerate(strokes):
         if not stroke:
             continue
+        color = colors[n] if colors else 0
+        if not 0 <= color < len(PALETTE):
+            raise ProtocolError(f"color {color} not in the palette")
+        if color != current:
+            out += bytes([COLOR_MARKER, color])
+            current = color
         for x, y in stroke:
             if not (0 <= x < CANVAS_W and 0 <= y < CANVAS_H):
                 raise ProtocolError(f"point {(x, y)} off canvas")
@@ -283,13 +294,24 @@ def encode_drawing(strokes: list[list[tuple[int, int]]]) -> bytes:
     return bytes(out)
 
 
-def decode_drawing(plaintext: bytes) -> list[list[tuple[int, int]]]:
+def decode_drawing_colored(plaintext: bytes) -> list[tuple[int, list[tuple[int, int]]]]:
+    """[(palette index, stroke), ...]"""
     if not plaintext or plaintext[0] != KIND_DRAWING:
         raise ProtocolError("not a drawing")
-    strokes, i = [], 1
+    return _decode_items(plaintext, 1)
+
+
+def _decode_items(plaintext: bytes, start: int) -> list[tuple[int, list[tuple[int, int]]]]:
+    strokes, i, color = [], start, 0
     while i < len(plaintext):
         count = plaintext[i]
-        if count == 0 or i + 5 + 2 * (count - 1) > len(plaintext):
+        if count == COLOR_MARKER:
+            if i + 1 >= len(plaintext) or plaintext[i + 1] >= len(PALETTE):
+                raise ProtocolError("bad color")
+            color = plaintext[i + 1]
+            i += 2
+            continue
+        if i + 5 + 2 * (count - 1) > len(plaintext):
             raise ProtocolError("bad stroke")
         x, y = struct.unpack_from("<HH", plaintext, i + 1)
         i += 5
@@ -299,8 +321,30 @@ def decode_drawing(plaintext: bytes) -> list[list[tuple[int, int]]]:
             i += 2
             x, y = x + dx, y + dy
             stroke.append((x, y))
-        strokes.append(stroke)
+        strokes.append((color, stroke))
     return strokes
+
+
+def note_plaintext(text: str, strokes: list[list[tuple[int, int]]], colors: list[int] | None = None) -> bytes:
+    """Text and drawing in one message. The drawing part is a drawing without its kind byte."""
+    t = text.encode("utf-8")
+    if len(t) > MAX_TEXT:
+        raise ProtocolError("text too long")
+    return bytes([KIND_NOTE, len(t)]) + t + encode_drawing(strokes, colors)[1:]
+
+
+def decode_note(plaintext: bytes) -> tuple[str, list[tuple[int, list[tuple[int, int]]]]]:
+    if len(plaintext) < 2 or plaintext[0] != KIND_NOTE:
+        raise ProtocolError("not a note")
+    n = plaintext[1]
+    if n > MAX_TEXT or 2 + n > len(plaintext):
+        raise ProtocolError("bad note text")
+    return plaintext[2:2 + n].decode("utf-8"), _decode_items(plaintext, 2 + n)
+
+
+def decode_drawing(plaintext: bytes) -> list[list[tuple[int, int]]]:
+    """Strokes without their colors."""
+    return [stroke for _, stroke in decode_drawing_colored(plaintext)]
 
 
 # --- Serial framing (SPEC §12) ---

@@ -133,6 +133,23 @@ class PayloadTest(unittest.TestCase):
             self.assertEqual(decoded[0][0], tuple(c["strokes"][0][0]))
             self.assertEqual(decoded[-1][-1], tuple(c["strokes"][-1][-1]))
 
+    def test_drawing_colors(self):
+        for c in load("drawing.json")["cases"]:
+            got = k.decode_drawing_colored(bytes.fromhex(c["plaintext"]))
+            self.assertEqual([color for color, _ in got], c["decoded_colors"])
+        with self.assertRaises(k.ProtocolError):
+            k.encode_drawing([[(1, 1)]], [8])
+        with self.assertRaises(k.ProtocolError):
+            k.decode_drawing_colored(bytes([k.KIND_DRAWING, 0x00, 9]))
+
+    def test_notes(self):
+        for c in load("drawing.json")["notes"]:
+            text, colored = k.decode_note(bytes.fromhex(c["plaintext"]))
+            self.assertEqual(text, c["text"])
+            self.assertEqual([[list(p) for p in s] for _, s in colored], c["decoded"])
+        with self.assertRaises(k.ProtocolError):
+            k.decode_note(bytes([k.KIND_NOTE, 5]) + b"ab")
+
     def test_drawing_rejects_off_canvas(self):
         with self.assertRaises(k.ProtocolError):
             k.encode_drawing([[(320, 0)]])
