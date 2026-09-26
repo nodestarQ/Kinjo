@@ -4,6 +4,7 @@
 import { randomBytes } from '@noble/hashes/utils.js';
 
 import {
+	contactUpdate,
 	KIND_DRAWING,
 	KIND_NOTE,
 	KIND_TEXT,
@@ -54,6 +55,33 @@ export interface PacketEvent {
 }
 
 const SEEN_MAX = 256;
+
+/** Everything after the first dot: "alice.kinjo.eth" for "laptop.alice.kinjo.eth". */
+const parentName = (name: string) => name.slice(name.indexOf('.') + 1);
+
+/** The laptop's own other devices (same owner, not revoked). They take CONTACT_UPDATE from it. */
+export function ownDevices(laptopName: string, contacts: Contact[]): Contact[] {
+	if (!laptopName.includes('.')) return [];
+	return contacts.filter((c) => c.name !== laptopName && !c.revoked && parentName(c.name) === parentName(laptopName));
+}
+
+/**
+ * CONTACT_UPDATE plaintexts for what an ENS sync changed (SPEC §11): a revoke for each newly
+ * revoked contact, a set for a new key, a contact authorized again or a changed badge.
+ */
+export function contactUpdates(before: Contact[], after: Contact[]): { name: string; plaintext: Uint8Array }[] {
+	const out: { name: string; plaintext: Uint8Array }[] = [];
+	for (const c of after) {
+		const old = before.find((b) => b.name === c.name);
+		if (!old) continue;
+		if (c.revoked) {
+			if (!old.revoked) out.push({ name: c.name, plaintext: contactUpdate.revoke(c.name) });
+		} else if (old.revoked || hex(old.pub) !== hex(c.pub) || !!old.verifiedHuman !== !!c.verifiedHuman) {
+			out.push({ name: c.name, plaintext: contactUpdate.set(c.name, c.pub, !!c.verifiedHuman) });
+		}
+	}
+	return out;
+}
 
 const hex = (b: Uint8Array) => [...b].map((x) => x.toString(16).padStart(2, '0')).join('');
 
@@ -150,6 +178,11 @@ export class MeshNode {
 		const packets = this.sealTo(to, notePlaintext(text, strokes));
 		this.onMessage({ id: packets.id, at: now, from: to.name, outgoing: true, status: 'verified', text, strokes });
 		return packets.packets;
+	}
+
+	/** Packets for a CONTACT_UPDATE to one of this laptop's devices. Not a chat message. */
+	sealUpdate(to: Contact, plaintext: Uint8Array): Uint8Array[] {
+		return this.sealTo(to, plaintext).packets;
 	}
 
 	private sealTo(to: Contact, plaintext: Uint8Array) {

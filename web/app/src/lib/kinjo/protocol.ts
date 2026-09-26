@@ -11,6 +11,9 @@ export const TYPE_SEALED = 0x10;
 export const KIND_TEXT = 0x01;
 export const KIND_DRAWING = 0x02;
 export const KIND_NOTE = 0x03;
+export const KIND_CONTACT_UPDATE = 0x04;
+export const OP_SET = 0x01;
+export const OP_REVOKE = 0x02;
 export const BROADCAST = 0xffffffff;
 export const DEFAULT_TTL = 4;
 
@@ -407,6 +410,13 @@ export function decodeName(data: Uint8Array, offset: number): [string, number] {
 	if (n > MAX_NAME || end > data.length) throw new ProtocolError('bad name');
 	return [fromUtf8.decode(data.subarray(offset + 1, end)), end];
 }
+
+/** CONTACT_UPDATE plaintext (SPEC §11): SET adds or replaces a contact, REVOKE marks it revoked. */
+export const contactUpdate = {
+	set: (name: string, pub: Uint8Array, verified: boolean) =>
+		concat(new Uint8Array([KIND_CONTACT_UPDATE, OP_SET, verified ? FLAG_VERIFIED : 0]), pub, encodeName(name)),
+	revoke: (name: string) => concat(new Uint8Array([KIND_CONTACT_UPDATE, OP_REVOKE, 0]), new Uint8Array(KEY_SIZE), encodeName(name))
+};
 
 export const provision = {
 	info: () => new Uint8Array([CMD_INFO]),

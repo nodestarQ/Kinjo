@@ -16,7 +16,7 @@ pnpm build    # static files in build/
 | `src/lib/kinjo/protocol.ts` | wire format (SPEC.md): packets, crypto, serial frames, provisioning |
 | `src/lib/kinjo/ens.ts` | device keys and badges from ENS, sync (revoked, new key), wallet, signing, relayer |
 | `src/lib/kinjo/onboarding.ts` | contract ABI and EIP-712 requests, shared with `web/relayer` |
-| `src/lib/kinjo/mesh.ts` | the laptop node: opens and seals messages |
+| `src/lib/kinjo/mesh.ts` | the laptop node: opens and seals messages, contact updates for the owner's handhelds |
 | `src/routes` | `/` sign in and sign up, `/chat` (chat list, `?with=<name>` opens one), `/devices`, `/settings` |
 | `src/service-worker.ts` | offline copy of the app (PWA). ENS and relayer calls always go to the network |
 

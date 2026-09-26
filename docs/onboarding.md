@@ -96,7 +96,7 @@ After a reset the device has a new key, so the old ENS record could never match 
 
 ## Revocation
 
-The owner clicks "Revoke" on a device (sponsored `revokeDevice`). At its next ENS sync the laptop node marks the device revoked and rejects its messages. Relays keep forwarding them because they can't read them (SPEC §11).
+The owner clicks "Revoke" on a device (sponsored `revokeDevice`). At its next ENS sync the laptop node marks the device revoked and rejects its messages. With the radio bridge connected it also tells the owner's other handhelds over the radio (SPEC §11). Relays keep forwarding them because they can't read them (SPEC §11).
 
 ## World ID (optional badge)
 

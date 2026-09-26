@@ -7,9 +7,9 @@ import { ensConfig, serialHelperUrl, teamAddress } from './config';
 import { DeviceLink } from './device';
 import { PARENT, createEns, keyHex } from './ens';
 import { loadContacts, loadName, loadPrivateKey, resetPrivateKey, saveContacts, saveName } from './identity';
-import { MeshNode, type Contact, type Message, type PacketEvent } from './mesh';
+import { MeshNode, contactUpdates, ownDevices, type Contact, type Message, type PacketEvent } from './mesh';
 import { onboardingAbi } from './onboarding';
-import { FRAME_LOG, FRAME_RADIO_RX, FRAME_RADIO_TX, type ColoredStroke, type DeviceInfo } from './protocol';
+import { FRAME_LOG, FRAME_RADIO_RX, FRAME_RADIO_TX, contactUpdate, type ColoredStroke, type DeviceInfo } from './protocol';
 import { SerialLink, type HelperPort } from './serial';
 
 const OWNER_KEY = 'kinjo.owner';
@@ -183,6 +183,22 @@ class AppState {
 		for (const p of this.node.sealNote(to, text, strokes)) {
 			await this.bridge.send(FRAME_RADIO_TX, p);
 			await new Promise((r) => setTimeout(r, 15)); // let the bridge send each fragment
+		}
+	}
+
+	/**
+	 * Sends ENS sync results to this laptop's own devices over the radio (CONTACT_UPDATE, SPEC §11),
+	 * so a handheld out of USB reach learns revocations, new keys and badges. Needs the bridge.
+	 */
+	private async pushUpdates(updates: { name: string; plaintext: Uint8Array }[]) {
+		if (!this.bridgeConnected || !updates.length) return;
+		for (const device of ownDevices(this.name, this.contacts)) {
+			const mine = updates.filter((u) => u.name !== device.name); // a device ignores updates about itself
+			for (const u of mine) {
+				for (const p of this.node.sealUpdate(device, u.plaintext)) await this.bridge.send(FRAME_RADIO_TX, p);
+				await new Promise((r) => setTimeout(r, 15));
+			}
+			if (mine.length) this.notice(`sent ${mine.length} contact update${mine.length > 1 ? 's' : ''} to ${device.name} over the radio`);
 		}
 	}
 
@@ -383,12 +399,21 @@ class AppState {
 	/** Re-reads every contact from ENS. Revoked devices get rejected from now on. */
 	async syncEns() {
 		if (!this.contacts.length) return;
-		const { contacts, changes } = await this.ens.sync($state.snapshot(this.contacts) as typeof this.contacts);
+		const before = $state.snapshot(this.contacts) as typeof this.contacts;
+		const verifiedBefore = !!this.owner?.verifiedHuman;
+		const { contacts, changes } = await this.ens.sync(before);
 		this.contacts = contacts;
 		this.node.contacts = this.contacts;
 		saveContacts(this.contacts);
 		for (const c of changes) this.notice(c);
 		if (this.owner) await this.refreshOwner(this.owner.address);
+		const updates = contactUpdates(before, contacts);
+		// The handheld shows the owner's badge from this laptop's contact entry.
+		const verified = !!this.owner?.verifiedHuman;
+		if (this.name && verified !== verifiedBefore) {
+			updates.push({ name: this.name, plaintext: contactUpdate.set(this.name, this.node.pub, verified) });
+		}
+		await this.pushUpdates(updates).catch((e) => this.notice(`radio update failed: ${(e as Error).message}`));
 	}
 
 	startSync() {

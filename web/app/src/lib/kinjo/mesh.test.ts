@@ -3,8 +3,8 @@ import { fileURLToPath } from 'node:url';
 import { hexToBytes } from '@noble/hashes/utils.js';
 import { describe, expect, it } from 'vitest';
 
-import { MeshNode, type Contact, type Message } from './mesh';
-import { Reassembler, decodeDrawingColored, deriveKey, openSealed } from './protocol';
+import { MeshNode, contactUpdates, ownDevices, type Contact, type Message } from './mesh';
+import { Reassembler, contactUpdate, decodeDrawingColored, deriveKey, openSealed } from './protocol';
 
 const VECTORS = fileURLToPath(new URL('../../../../../protocol/test-vectors/', import.meta.url));
 const load = (name: string) => JSON.parse(readFileSync(VECTORS + name, 'utf8'));
@@ -79,5 +79,38 @@ describe('MeshNode', () => {
 		for (const p of packets) done = r.push(p, 0) ?? done;
 		const key = deriveKey(hexToBytes(keys.handheld.private), node.pub);
 		expect(new TextDecoder().decode(openSealed(key, done!.header, done!.body).subarray(1))).toBe('hello handheld');
+	});
+});
+
+describe('contact updates', () => {
+	const bob: Contact = { name: 'handheld.bob.kinjo.eth', pub: new Uint8Array(32).fill(7) };
+	const carol: Contact = { name: 'laptop.carol.kinjo.eth', pub: new Uint8Array(32).fill(9), verifiedHuman: true };
+
+	it('go only to the laptop\'s own devices', () => {
+		const revokedOwn = { ...handheld, name: 'phone.alice.kinjo.eth', revoked: true };
+		expect(ownDevices('laptop.alice.kinjo.eth', [handheld, bob, revokedOwn]).map((c) => c.name)).toEqual([handheld.name]);
+		expect(ownDevices('', [handheld])).toEqual([]);
+	});
+
+	it('cover revocations, new keys, badges and nothing else', () => {
+		const before = [bob, carol, handheld];
+		const after = [{ ...bob, revoked: true }, { ...carol, verifiedHuman: false }, handheld];
+		const got = contactUpdates(before, after).map((u) => [u.name, u.plaintext]);
+		expect(got).toEqual([
+			[bob.name, contactUpdate.revoke(bob.name)],
+			[carol.name, contactUpdate.set(carol.name, carol.pub, false)]
+		]);
+		const back = contactUpdates(after, [bob, { ...carol, pub: new Uint8Array(32).fill(1), verifiedHuman: false }, handheld]);
+		expect(back.map((u) => u.name)).toEqual([bob.name, carol.name]);
+	});
+
+	it('are sealed to the device and open with its key', () => {
+		const { node, messages } = laptop([handheld]);
+		const pt = contactUpdate.revoke(bob.name);
+		const packets = node.sealUpdate(handheld, pt);
+		expect(packets.length).toBe(1);
+		const done = new Reassembler().push(packets[0], 0)!;
+		expect(openSealed(deriveKey(hexToBytes(keys.handheld.private), hexToBytes(keys.laptop.public)), done.header, done.body)).toEqual(pt);
+		expect(messages).toEqual([]); // not a chat message
 	});
 });

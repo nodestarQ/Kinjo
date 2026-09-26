@@ -148,3 +148,14 @@ describe('provisioning', () => {
 		}
 	});
 });
+
+describe('contact update', () => {
+	const v = load('contact-update.json');
+
+	it('builds the plaintext vectors', () => {
+		for (const c of v.cases) {
+			const pt = c.op === k.OP_SET ? k.contactUpdate.set(c.name, hex(c.pub), c.flags === k.FLAG_VERIFIED) : k.contactUpdate.revoke(c.name);
+			expect(bytesToHex(pt), c.label).toBe(c.plaintext);
+		}
+	});
+});
