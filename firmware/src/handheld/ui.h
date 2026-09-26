@@ -931,6 +931,7 @@ inline void refresh() {
 }
 
 inline void on_message(const Contact& from, const uint8_t* pt, size_t len) {
+  if (pt[0] != KIND_TEXT && pt[0] != KIND_DRAWING && pt[0] != KIND_NOTE) return;  // newer kinds aren't chat messages
   Msg& m = new_msg(from, from.name, from.name_len, false);
   if (pt[0] == KIND_TEXT) {
     set_text(m, (const char*)pt + 1, len - 1);
