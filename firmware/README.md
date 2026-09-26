@@ -6,10 +6,10 @@ Arduino sketches for the three boards plus the shared protocol library.
 |---|---|---|
 | `src/relay` | XIAO ESP32-C3 | forwards packets, logs every one over USB |
 | `src/bridge` | XIAO ESP32-C3 | modem for the laptop node (ESP-NOW to serial frames and back) |
-| `src/handheld` | ESP32-DevKitC | not written yet |
+| `src/handheld` | ESP32-DevKitC | key and contacts in flash, USB provisioning, sealed send and receive (no screen yet) |
 | `lib/kinjo` | all | wire format, crypto, radio glue. `topology.h` holds the board MACs |
 | `test` | laptop | library tests against `protocol/test-vectors` |
-| `tools` | laptop | `monitor.py` shows a board's serial frames |
+| `tools` | laptop | `monitor.py` shows a board's serial frames, `provision.py` sends USB provisioning commands |
 
 Toolchain: esp32 core **2.0.17**. Board wiring: [docs/hardware.md](../docs/hardware.md).
 
@@ -47,3 +47,26 @@ python3 -m venv .venv && .venv/bin/pip install -r firmware/tools/requirements.tx
 ```
 
 Pass: terminal 2 prints `TX SEALED ...` every 2 s and terminal 1 prints `RX from <bridge mac> SEALED ...` with the same message ID. The relay only ever shows ciphertext. It reports `tx=0` while the handheld MAC is still zero (nothing to forward to). Opening a port resets the XIAO, so each run starts with its boot log.
+
+## Test the handheld on a spare XIAO
+
+Build with `-DKINJO_TEST_DIRECT` and the handheld talks to the bridge directly, no relay needed:
+
+```sh
+arduino-cli compile --fqbn esp32:esp32:XIAO_ESP32C3 --library firmware/lib/kinjo \
+  --build-property "compiler.cpp.extra_flags=-DKINJO_TEST_DIRECT" --output-dir /tmp/hh firmware/src/handheld
+arduino-cli upload --fqbn esp32:esp32:XIAO_ESP32C3 -p <port> --input-dir /tmp/hh firmware/src/handheld
+```
+
+Then, with the venv from above:
+
+```sh
+cd firmware/tools
+python provision.py <handheld port> info               # prints its public key
+python provision.py <handheld port> set-name handheld.alice.kinjo.eth
+python provision.py <handheld port> add-test-laptop    # the laptop test key as a contact
+python provision.py <handheld port> send laptop.alice.kinjo.eth "gm Tokyo"
+python monitor.py <bridge port> --as-laptop --peer <handheld public key> [--send-test]
+```
+
+Pass: the bridge monitor prints `opened: TEXT 'gm Tokyo'`. With `--send-test` the handheld logs `rx text from laptop.alice.kinjo.eth: test 1` and so on.

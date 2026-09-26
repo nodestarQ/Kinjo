@@ -169,6 +169,7 @@ Registration flow: [docs/onboarding.md](../docs/onboarding.md).
 | `0x03` | LOG | device to laptop | UTF-8 text |
 | `0x04` | PROVISION | laptop to handheld | §13 |
 | `0x05` | PROVISION_REPLY | handheld to laptop | §13 |
+| `0x06` | SEND_TEXT | laptop to handheld | contact name (u8 length + UTF-8) + text. For testing: the handheld seals the text to that contact and sends it |
 
 The relay uses the same framing to report every frame it forwards as RADIO_RX. That is the log that shows it only sees ciphertext.
 

@@ -2,6 +2,8 @@
 
   python monitor.py /dev/cu.usbmodem1101              # print LOG and RADIO_RX frames
   python monitor.py /dev/cu.usbmodem1101 --send-test  # also send a sealed test packet every 2 s (bridge only)
+  python monitor.py <bridge port> --as-laptop --peer <handheld public key> [--send-test]
+      act as the laptop test key: open messages from the handheld, send sealed texts to it
 
 Needs pyserial and cryptography (see requirements.txt).
 """
@@ -22,6 +24,23 @@ HANDHELD_PRIV = bytes(range(1, 33))
 LAPTOP_PRIV = bytes(range(33, 65))
 
 
+def open_for_laptop(packet: bytes, peer_pub: bytes, reasm: k.Reassembler) -> str | None:
+    """Reassembles and opens a message to the laptop test key. None until complete."""
+    h, _ = k.parse_packet(packet)
+    if h.type != k.TYPE_SEALED or h.destination != k.node_id(k.public_key(LAPTOP_PRIV)):
+        return None
+    done = reasm.push(packet, time.monotonic())
+    if not done:
+        return None
+    try:
+        pt = k.open_sealed(k.derive_key(LAPTOP_PRIV, peer_pub), *done)
+    except Exception:
+        return "could not open (wrong --peer key?)"
+    if pt[0] == k.KIND_TEXT:
+        return f"TEXT {pt[1:].decode(errors='replace')!r}"
+    return f"DRAWING {len(k.decode_drawing(pt))} strokes"
+
+
 def describe(packet: bytes) -> str:
     try:
         h, frag = k.parse_packet(packet)
@@ -32,9 +51,9 @@ def describe(packet: bytes) -> str:
             f"frag {h.frag_index + 1}/{h.frag_count} {len(frag)} B: {frag[:24].hex()}...")
 
 
-def test_packets(counter: int) -> list[bytes]:
-    """A sealed text from the laptop test key to the handheld test key."""
-    lp, hp = k.public_key(LAPTOP_PRIV), k.public_key(HANDHELD_PRIV)
+def test_packets(counter: int, to_pub: bytes | None = None) -> list[bytes]:
+    """A sealed text from the laptop test key to `to_pub` (default: the handheld test key)."""
+    lp, hp = k.public_key(LAPTOP_PRIV), to_pub or k.public_key(HANDHELD_PRIV)
     key = k.derive_key(LAPTOP_PRIV, hp)
     pt = k.text_plaintext(f"test {counter}")
     return k.seal(key, k.node_id(lp), k.node_id(hp), int.from_bytes(os.urandom(4), "little"), pt, os.urandom(12))
@@ -55,7 +74,11 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("port")
     ap.add_argument("--send-test", action="store_true")
+    ap.add_argument("--as-laptop", action="store_true")
+    ap.add_argument("--peer", help="handheld public key hex, for --as-laptop")
     args = ap.parse_args()
+    peer = bytes.fromhex(args.peer.removeprefix("0x")) if args.peer else None
+    reasm = k.Reassembler()
 
     port = open_port(args.port)
     buf = bytearray()
@@ -65,7 +88,7 @@ def main():
         while True:
             if args.send_test and time.monotonic() >= next_send:
                 counter += 1
-                for p in test_packets(counter):
+                for p in test_packets(counter, peer if args.as_laptop else None):
                     port.write(k.serial_frame(k.FRAME_RADIO_TX, p))
                     print(f"TX   {describe(p)}")
                 next_send = time.monotonic() + 2
@@ -86,6 +109,10 @@ def main():
                 elif ftype == k.FRAME_RADIO_RX and len(body) >= 7:
                     mac = ":".join(f"{b:02x}" for b in body[:6])
                     print(f"RX   from {mac} {describe(body[7:])}")
+                    if args.as_laptop and peer:
+                        opened = open_for_laptop(body[7:], peer, reasm)
+                        if opened:
+                            print(f"     opened: {opened}")
                 else:
                     print(f"0x{ftype:02x} {body.hex()}")
     except KeyboardInterrupt:
