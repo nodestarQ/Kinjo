@@ -26,7 +26,8 @@ Kinjo is an experiment in keeping a neighborhood connected when the usual infras
 - **Relay** (XIAO ESP32-C3): forwards everything, can read nothing. Its log only shows headers and ciphertext.
 - **Web app**, also the laptop node: sign up for a name, register devices, chat over the radio bridge. Installable and usable offline (PWA).
 - **End-to-end encryption** (X25519 + ChaCha20-Poly1305) over a forced 2-hop route: handheld → relay → laptop.
-- **ENSv2 on Sepolia** as the trust layer: names, device keys, revocation. A World ID badge is in the contract but not yet switched on in the app.
+- **ENSv2 on Sepolia** as the trust layer: names, device keys, revocation.
+- **World ID** (optional): a Proof of Human badge, checked on the server. One human, one name ([why and how](docs/onboarding.md#world-id-optional-badge)).
 
 How it works: [docs/design.md](docs/design.md). Wire format: [protocol/SPEC.md](protocol/SPEC.md).
 

@@ -100,7 +100,29 @@ The owner clicks "Revoke" on a device (sponsored `revokeDevice`). At its next EN
 
 ## World ID (optional badge)
 
-Claims stay open without it. After joining, the owner can click "Verify with World ID". The relayer checks the proof and calls `setVerifiedHuman(owner, true)`, which registers `alice.verified.kinjo.eth`:
+Claims stay open without it. After joining, the owner can click "Verify with World ID" in Settings.
+
+**Why a badge:** in an outage the mesh is open to anyone in radio range, so a flood of fake devices is easy. A reader can't tell a neighbor from a script. The badge answers one question, "is there one real human behind this name?", so people can filter for it. Nothing else about the person is needed.
+
+**Credential:** World ID **Proof of Human** (Orb, `proofOfHuman()` with the legacy Orb fallback). It's the minimum that answers that question. Uniqueness is the point (one human, one name), and only the Orb credential gives it. Passport, Selfie Check or Identity Check would tell Kinjo more (documents, attributes) without making the badge any more useful. The proof reveals nothing but "unique human for this action".
+
+**Flow:**
+
+1. The web app asks the relayer for a request (`POST /world/context`). The relayer signs it with the RP signing key, which never leaves the server.
+2. IDKit shows a QR code. The proof's signal is the owner's wallet address.
+3. The web app sends the proof to `POST /world/verify`. The relayer checks, in this order: the owner has a Kinjo name, action and environment match, the signal hash is that owner's address, the World Developer Portal accepts the proof (`/api/v4/verify`), the nullifier isn't tied to another owner.
+4. Then it calls `setVerifiedHuman(owner, true)`, which registers `alice.verified.kinjo.eth`.
+
+| Outcome | What the user sees |
+|---|---|
+| Proof accepted | badge shown in Settings, "human" next to the name in chats and on handhelds |
+| Declined or cancelled in World App, 5 min timeout | "Not verified: …" with Try again |
+| No Orb verification on that World ID | "Not verified: This World ID has no proof of human (Orb verification) yet." |
+| Portal rejects the proof | "Not verified: World ID rejected the proof: …" |
+| Same human already verified another name | "Not verified: this World ID already verified another Kinjo name" |
+| Proof made for another wallet | "Not verified: proof was made for another wallet" |
+
+The nullifier store is a JSON file on the relayer (`/data` volume in Docker). The badge name:
 
 | Record | Value |
 |---|---|
