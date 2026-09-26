@@ -18,6 +18,7 @@
 		"@sveltejs/vite-plugin-svelte": "^7.1.2",
 		"@tailwindcss/vite": "^4.3.3",
 		"@types/node": "^26.6.2",
+		"@types/qrcode": "^1.5.6",
 		"svelte": "^5.56.1",
 		"svelte-check": "^4.6.0",
 		"tailwindcss": "^4.3.3",
@@ -29,6 +30,8 @@
 		"@noble/ciphers": "^2.4.0",
 		"@noble/curves": "^2.4.0",
 		"@noble/hashes": "^2.4.0",
+		"@worldcoin/idkit-core": "4.3.0",
+		"qrcode": "^1.5.4",
 		"viem": "^2.56.9"
 	}
 }
