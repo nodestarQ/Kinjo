@@ -26,7 +26,7 @@ How it works: [docs/design.md](docs/design.md). Hardware and wiring: [docs/hardw
 protocol/    wire format spec, reference implementation, shared test vectors
 firmware/    ESP32 code: handheld, relay, laptop radio bridge (shared lib)
 laptop/      laptop node: serial bridge, desktop UI, gateway
-web/         ENS onboarding web app
+web/         web app: ENS onboarding and the laptop node
 contracts/   smart contracts
 docs/        design notes and hardware
 ```
@@ -42,6 +42,7 @@ _Coming soon._
 | Protocol reference, test vectors | `cd protocol/reference && .venv/bin/python -m unittest` | [protocol/reference](protocol/reference/README.md) |
 | Firmware library (runs on the laptop) | `make -C firmware/test` | needs a C++ compiler and python3 |
 | Contracts (Sepolia fork) | `cd contracts && forge test` | [contracts](contracts/README.md) |
+| Web app protocol port | `cd web/app && pnpm test` | [web/app](web/app/README.md) |
 
 ## Team
 
