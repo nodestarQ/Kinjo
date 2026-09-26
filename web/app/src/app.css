@@ -1,1 +1,16 @@
 @import 'tailwindcss';
+
+@layer components {
+	.btn {
+		@apply rounded bg-neutral-900 px-3 py-1.5 text-sm text-white hover:bg-neutral-700 disabled:opacity-40;
+	}
+	.btn-secondary {
+		@apply rounded border border-neutral-300 px-3 py-1.5 text-sm hover:bg-neutral-100 disabled:opacity-40;
+	}
+	.btn-danger {
+		@apply rounded border border-red-300 px-3 py-1.5 text-sm text-red-700 hover:bg-red-50 disabled:opacity-40;
+	}
+	.input {
+		@apply rounded border border-neutral-300 px-2 py-1.5 text-sm;
+	}
+}

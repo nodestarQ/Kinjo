@@ -7,6 +7,9 @@
 
 <svelte:head>
 	<link rel="icon" href={favicon} />
+	<title>Kinjo</title>
 </svelte:head>
 
-{@render children()}
+<div class="min-h-screen bg-neutral-50 text-neutral-900">
+	{@render children()}
+</div>
