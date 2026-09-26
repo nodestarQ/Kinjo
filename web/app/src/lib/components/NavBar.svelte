@@ -2,6 +2,7 @@
 	import { page } from '$app/state';
 
 	import { app } from '$lib/kinjo/state.svelte';
+	import logo from '$lib/assets/logo.svg';
 	import { shortName, tabColor } from '$lib/kinjo/tabs';
 
 	const links = [
@@ -13,7 +14,9 @@
 </script>
 
 <header class="panel flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2">
-	<a href={app.signedIn ? '/chat' : '/'} class="text-2xl tracking-wider text-accent">Kinjo</a>
+	<a href={app.signedIn ? '/chat' : '/'} class="flex items-center gap-2 text-2xl tracking-wider text-accent">
+		<img src={logo} alt="" class="h-8 w-8" />Kinjo
+	</a>
 	{#if app.signedIn}
 		<nav class="flex gap-1">
 			{#each links as l (l.href)}

@@ -1,6 +1,6 @@
 <script lang="ts">
 	import '../app.css';
-	import favicon from '$lib/assets/favicon.svg';
+	import logo from '$lib/assets/logo.svg';
 
 	import NavBar from '$lib/components/NavBar.svelte';
 	import PortPicker from '$lib/components/PortPicker.svelte';
@@ -11,7 +11,7 @@
 </script>
 
 <svelte:head>
-	<link rel="icon" href={favicon} />
+	<link rel="icon" type="image/svg+xml" href={logo} />
 	<link rel="manifest" href="/manifest.webmanifest" />
 	<meta name="theme-color" content="#8ea0b3" />
 	<title>Kinjo</title>
