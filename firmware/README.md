@@ -6,7 +6,7 @@ Arduino sketches for the three boards plus the shared protocol library.
 |---|---|---|
 | `src/relay` | XIAO ESP32-C3 | forwards packets, logs every one over USB |
 | `src/bridge` | XIAO ESP32-C3 | modem for the laptop node (ESP-NOW to serial frames and back) |
-| `src/handheld` | ESP32-DevKitC | key and contacts in flash, USB provisioning, sealed send and receive (no screen yet) |
+| `src/handheld` | ESP32-DevKitC | key and contacts in flash, USB provisioning, sealed send and receive, screen UI (`ui.h`) |
 | `lib/kinjo` | all | wire format, crypto, radio glue. `topology.h` holds the board MACs |
 | `test` | laptop | library tests against `protocol/test-vectors` |
 | `tools` | laptop | `monitor.py` shows a board's serial frames, `provision.py` sends USB provisioning commands |
@@ -31,6 +31,39 @@ arduino-cli upload  --fqbn esp32:esp32:XIAO_ESP32C3 -p <port> firmware/src/relay
 Same for `bridge`. The handheld uses `esp32:esp32:esp32wrover`.
 
 If the first upload to a XIAO fails with `No serial data received`: unplug it, hold **B**, plug it in, release **B**, upload again.
+
+## Screen library setup (handheld only)
+
+TFT_eSPI **2.5.43** takes its pins from `User_Setup.h` in the library folder (`~/Documents/Arduino/libraries/TFT_eSPI/` on macOS, `~/Arduino/libraries/TFT_eSPI/` on Linux). Replace its content with:
+
+```c
+#define ILI9341_DRIVER
+#define TFT_MISO 19   // not wired to the display; touch T_DO uses it
+#define TFT_MOSI 23
+#define TFT_SCLK 18
+#define TFT_CS   26
+#define TFT_DC   21
+#define TFT_RST  22
+#define TOUCH_CS 27
+#define LOAD_GLCD
+#define LOAD_FONT2
+#define LOAD_FONT4
+#define LOAD_GFXFF
+#define SMOOTH_FONT
+#define SPI_FREQUENCY       27000000
+#define SPI_READ_FREQUENCY  20000000
+#define SPI_TOUCH_FREQUENCY  2500000
+```
+
+## Handheld controls
+
+| Button | Messages screen | Draw screen |
+|---|---|---|
+| MESSAGES (GPIO 25) | open the draw screen | back to messages |
+| ROOM (GPIO 32) | next contact as recipient | next contact as recipient |
+| SEND (GPIO 33) | send "gm" | send the drawing |
+
+Draw with a stylus or fingernail. A received drawing opens on the draw screen. Senders with a World ID badge show in green.
 
 ## Set the MACs
 

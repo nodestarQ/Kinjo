@@ -3,12 +3,18 @@
 //
 // Build with -DKINJO_TEST_DIRECT to run this on a spare XIAO that talks to the
 // radio bridge directly (no relay), for testing without the real handheld.
+// The screen UI (ui.h) is built only for the DevKitC.
 
 #include <kinjo.h>
 #include <kinjo_radio.h>
 
 #include "node.h"
 #include "storage.h"
+
+#if CONFIG_IDF_TARGET_ESP32 && !defined(KINJO_TEST_DIRECT)
+#define KINJO_SCREEN 1
+#include "ui.h"
+#endif
 
 using namespace kinjo;
 
@@ -17,6 +23,9 @@ static FrameReader reader;
 static uint32_t last_stats_ms = 0;
 
 static void on_message(const Contact& from, const uint8_t* pt, size_t len) {
+#ifdef KINJO_SCREEN
+  ui::on_message(from, pt, len);
+#endif
   if (pt[0] == KIND_TEXT) {
     radio::log("rx text from %.*s: %.*s", from.name_len, from.name, (int)(len - 1), (const char*)pt + 1);
   } else if (pt[0] == KIND_DRAWING) {
@@ -57,6 +66,9 @@ static void handle_serial() {
       size_t n = handle_provision(state, body, len, storage::random_key, reply, changed);
       if (changed) storage::save(state);
       radio::write_frame(FRAME_PROVISION_REPLY, reply, n);
+#ifdef KINJO_SCREEN
+      if (changed) ui::refresh();
+#endif
     } else if (type == FRAME_SEND_TEXT) {
       handle_send_text(body, len);
     }
@@ -74,6 +86,9 @@ void setup() {
   node::on_message = on_message;
   if (first_boot) radio::log("handheld: first boot, new key pair made");
   log_identity();
+#ifdef KINJO_SCREEN
+  ui::begin(state);
+#endif
 }
 
 void loop() {
@@ -81,6 +96,9 @@ void loop() {
 
   radio::RxFrame f;
   while (radio::poll(f)) node::receive(f, millis());
+#ifdef KINJO_SCREEN
+  ui::loop(millis());
+#endif
 
   if (millis() - last_stats_ms > 10000) {
     last_stats_ms = millis();
