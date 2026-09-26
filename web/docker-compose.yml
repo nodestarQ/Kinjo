@@ -1,0 +1,16 @@
+# On the server: cp .env.example .env, fill it in, then: docker compose up -d --build
+services:
+  kinjo:
+    build:
+      context: .
+      args:
+        PUBLIC_KINJO_ONBOARDING: ${KINJO_ONBOARDING}
+        PUBLIC_RELAYER_URL: https://${KINJO_DOMAIN}
+    environment:
+      KINJO_ONBOARDING: ${KINJO_ONBOARDING}
+      RELAYER_PRIVATE_KEY: ${RELAYER_PRIVATE_KEY}
+      KINJO_RPC_URL: ${KINJO_RPC_URL:-https://ethereum-sepolia-rpc.publicnode.com}
+      ALLOWED_ORIGIN: https://${KINJO_DOMAIN}
+    ports:
+      - "127.0.0.1:8787:8787" # only nginx on the host reaches it
+    restart: unless-stopped

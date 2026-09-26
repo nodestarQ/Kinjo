@@ -6,6 +6,7 @@ Submits owner-signed `KinjoOnboarding` requests and pays the gas, so people can 
 |---|---|
 | `POST /relay` | takes `{ action, owner, ..., deadline, signature }` (see `web/app/src/lib/kinjo/onboarding.ts`), simulates the call, sends it, returns `{ hash }` or `{ error }` |
 | `GET /health` | relayer address, contract, chain |
+| any other `GET` | the built web app, if `STATIC_DIR` is set (the Docker image does) |
 
 Checks before any transaction: request shape, deadline at most 1 hour ahead, 10 requests per owner per 10 minutes. The contract then checks the signature and nonce.
 

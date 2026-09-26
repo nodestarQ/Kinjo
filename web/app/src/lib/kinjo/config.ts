@@ -21,5 +21,9 @@ export const ensConfig: EnsConfig = {
 
 export const teamAddress = PUBLIC_KINJO_TEAM.toLowerCase();
 
-/** Local serial helper (firmware/tools/serial_helper.py). Empty: use the browser's Web Serial. */
-export const serialHelperUrl = PUBLIC_SERIAL_HELPER.replace(/\/$/, '');
+/**
+ * Local serial helper (firmware/tools/serial_helper.py). Empty: use the browser's Web Serial.
+ * `?helper=ws://127.0.0.1:8765` in the page URL turns it on for one visit, e.g. on the live site.
+ */
+const fromUrl = typeof location === 'undefined' ? null : new URLSearchParams(location.search).get('helper');
+export const serialHelperUrl = (fromUrl ?? PUBLIC_SERIAL_HELPER).replace(/\/$/, '');

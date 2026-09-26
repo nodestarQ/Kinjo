@@ -1,7 +1,9 @@
 // Relayer: submits owner-signed KinjoOnboarding requests and pays the gas (docs/onboarding.md).
 // POST /relay checks the request, simulates the call and sends it from the team wallet.
 
+import { readFile } from 'node:fs/promises';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
+import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
 	BaseError,
@@ -31,6 +33,8 @@ export interface Config {
 	rateWindowMs: number;
 	/** Longest accepted deadline, so signatures can't be hoarded. */
 	maxDeadlineSeconds: number;
+	/** Built web app to serve on all other paths (the Docker image sets it). Empty: API only. */
+	staticDir: string;
 }
 
 export function configFromEnv(env = process.env): Config {
@@ -45,7 +49,8 @@ export function configFromEnv(env = process.env): Config {
 		allowedOrigin: env.ALLOWED_ORIGIN ?? '*',
 		rateLimit: Number(env.RATE_LIMIT ?? 10),
 		rateWindowMs: 10 * 60 * 1000,
-		maxDeadlineSeconds: 3600
+		maxDeadlineSeconds: 3600,
+		staticDir: env.STATIC_DIR ?? ''
 	};
 }
 
@@ -113,13 +118,39 @@ async function readJson(req: IncomingMessage): Promise<unknown> {
 	return JSON.parse(body);
 }
 
+const TYPES: Record<string, string> = {
+	'.html': 'text/html; charset=utf-8',
+	'.js': 'text/javascript',
+	'.css': 'text/css',
+	'.svg': 'image/svg+xml',
+	'.json': 'application/json',
+	'.png': 'image/png',
+	'.txt': 'text/plain'
+};
+
+/** Serves the static app. Unknown paths get index.html (client-side routing). */
+async function serveStatic(dir: string, url: string, res: ServerResponse) {
+	const path = normalize(decodeURIComponent(url.split('?')[0])).replace(/^(\.\.[/\\])+/, '');
+	for (const file of [join(dir, path), join(dir, 'index.html')]) {
+		if (!file.startsWith(dir)) continue;
+		try {
+			const body = await readFile(file);
+			res.setHeader('Content-Type', TYPES[extname(file)] ?? 'application/octet-stream');
+			return res.writeHead(200).end(body);
+		} catch {
+			// directory or missing: try the next candidate
+		}
+	}
+	res.writeHead(404).end('not found');
+}
+
 export function startServer(config: Config, port: number) {
 	const relayer = createRelayer(config);
 	const server = createServer(async (req: IncomingMessage, res: ServerResponse) => {
 		res.setHeader('Access-Control-Allow-Origin', config.allowedOrigin);
 		res.setHeader('Access-Control-Allow-Headers', 'content-type');
-		res.setHeader('Content-Type', 'application/json');
-		const send = (status: number, data: object) => res.writeHead(status).end(JSON.stringify(data));
+		const send = (status: number, data: object) =>
+			res.setHeader('Content-Type', 'application/json').writeHead(status).end(JSON.stringify(data));
 
 		if (req.method === 'OPTIONS') return send(204, {});
 		if (req.method === 'GET' && req.url === '/health') {
@@ -137,6 +168,7 @@ export function startServer(config: Config, port: number) {
 				return send(400, { error: (e as Error).message });
 			}
 		}
+		if (req.method === 'GET' && config.staticDir) return serveStatic(config.staticDir, req.url ?? '/', res);
 		send(404, { error: 'not found' });
 	});
 	return new Promise<typeof server>((resolve) => server.listen(port, () => resolve(server)));
