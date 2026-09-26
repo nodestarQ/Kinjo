@@ -38,8 +38,16 @@ struct SealedCase {
 };
 struct DrawingCase {
   Strokes strokes;
+  std::vector<int> colors;
   const char* plaintext;
   Strokes decoded;
+  std::vector<int> decoded_colors;
+};
+struct NoteCase {
+  const char* text;
+  const char* plaintext;
+  Strokes decoded;
+  std::vector<int> decoded_colors;
 };
 struct IdentityCase {
   const char* pub;
@@ -256,27 +264,69 @@ static void test_sealed() {
   }
 }
 
-static void collect(void* ctx, bool new_stroke, int x, int y) {
-  Strokes* s = (Strokes*)ctx;
-  if (new_stroke) s->emplace_back();
-  s->back().emplace_back(x, y);
+struct Collected {
+  Strokes strokes;
+  std::vector<int> colors;
+};
+
+static void collect(void* ctx, bool new_stroke, int x, int y, uint8_t color) {
+  Collected* c = (Collected*)ctx;
+  if (new_stroke) {
+    c->strokes.emplace_back();
+    c->colors.push_back(color);
+  }
+  c->strokes.back().emplace_back(x, y);
 }
 
 static void test_drawing() {
   for (const DrawingCase& c : DRAWING_CASES) {
     uint8_t out[MAX_PLAINTEXT];
     DrawingEncoder enc(out, sizeof(out));
-    for (const auto& stroke : c.strokes) {
+    for (size_t s = 0; s < c.strokes.size(); s++) {
+      const auto& stroke = c.strokes[s];
+      enc.set_color(c.colors[s]);
       enc.begin_stroke(stroke[0].first, stroke[0].second);
       for (size_t i = 1; i < stroke.size(); i++) enc.add_point(stroke[i].first, stroke[i].second);
     }
     CHECK(eq(out, enc.length(), hex(c.plaintext)), "drawing encode");
-    Strokes back;
-    CHECK(decode_drawing(out, enc.length(), collect, &back) && back == c.decoded, "drawing decode");
+    Collected back;
+    CHECK(decode_drawing(out, enc.length(), collect, &back) && back.strokes == c.decoded, "drawing decode");
+    CHECK(back.colors == c.decoded_colors, "drawing colors");
   }
   uint8_t out[16];
   DrawingEncoder enc(out, sizeof(out));
   CHECK(!enc.begin_stroke(CANVAS_W, 0) && enc.length() == 0, "off canvas rejected");
+  uint8_t bad[] = {KIND_DRAWING, COLOR_MARKER, PALETTE_SIZE};
+  Collected ignored;
+  CHECK(!decode_drawing(bad, sizeof(bad), collect, &ignored), "color outside the palette rejected");
+}
+
+static void test_notes() {
+  for (const NoteCase& c : NOTE_CASES) {
+    Bytes pt = hex(c.plaintext);
+    const char* text;
+    size_t text_len;
+    const uint8_t* items;
+    size_t items_len;
+    CHECK(parse_note(pt.data(), pt.size(), text, text_len, items, items_len) && std::string(text, text_len) == c.text,
+          "note text");
+    Collected back;
+    CHECK(decode_drawing_items(items, items_len, collect, &back) && back.strokes == c.decoded &&
+              back.colors == c.decoded_colors,
+          "note drawing");
+
+    // Build it again from the text and the drawing part, as the handheld does.
+    Bytes drawing = {KIND_DRAWING};
+    drawing.insert(drawing.end(), items, items + items_len);
+    uint8_t out[MAX_PLAINTEXT];
+    size_t n = note_plaintext(c.text, strlen(c.text), drawing.data(), drawing.size(), out);
+    CHECK(eq(out, n, pt), "note encode");
+  }
+  uint8_t bad[] = {KIND_NOTE, 5, 'a', 'b'};
+  const char* t;
+  size_t tl, il;
+  const uint8_t* it;
+  CHECK(!parse_note(bad, sizeof(bad), t, tl, it, il), "short note rejected");
 }
 
 static void test_payloads() {
@@ -412,6 +462,7 @@ int main() {
   test_crypto();
   test_sealed();
   test_drawing();
+  test_notes();
   test_payloads();
   test_cobs();
   test_provision();

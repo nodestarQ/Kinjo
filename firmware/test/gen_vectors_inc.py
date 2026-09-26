@@ -57,7 +57,15 @@ def main(out_path):
 
     lines.append("static const std::vector<DrawingCase> DRAWING_CASES = {")
     for c in load("drawing.json")["cases"]:
-        lines.append(f"  {{{strokes(c['strokes'])}, {s(c['plaintext'])}, {strokes(c['decoded'])}}},")
+        ints = lambda v: "{" + ", ".join(str(x) for x in v) + "}"
+        lines.append(f"  {{{strokes(c['strokes'])}, {ints(c['colors'])}, {s(c['plaintext'])}, {strokes(c['decoded'])}, "
+                     f"{ints(c['decoded_colors'])}}},")
+    lines.append("};")
+
+    lines.append("static const std::vector<NoteCase> NOTE_CASES = {")
+    for c in load("drawing.json")["notes"]:
+        ints = lambda v: "{" + ", ".join(str(x) for x in v) + "}"
+        lines.append(f"  {{{s(c['text'])}, {s(c['plaintext'])}, {strokes(c['decoded'])}, {ints(c['decoded_colors'])}}},")
     lines.append("};")
 
     i = load("identity.json")

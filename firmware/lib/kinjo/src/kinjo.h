@@ -14,6 +14,7 @@ constexpr uint8_t TYPE_SEALED = 0x10;
 
 constexpr uint8_t KIND_TEXT = 0x01;
 constexpr uint8_t KIND_DRAWING = 0x02;
+constexpr uint8_t KIND_NOTE = 0x03;
 
 constexpr uint32_t BROADCAST = 0xFFFFFFFF;
 constexpr uint8_t DEFAULT_TTL = 4;
@@ -36,6 +37,8 @@ constexpr size_t IDENTITY_MAX = KEY_SIZE + MAX_NAME;
 
 constexpr int CANVAS_W = 320;
 constexpr int CANVAS_H = 240;
+constexpr uint8_t COLOR_MARKER = 0x00;
+constexpr uint8_t PALETTE_SIZE = 8;  // colors in SPEC §9
 
 constexpr size_t SEEN_CACHE_SIZE = 64;
 constexpr size_t REASSEMBLY_SLOTS = 4;
@@ -164,6 +167,8 @@ bool parse_identity(const uint8_t* body, size_t len, const uint8_t*& pub, const 
 class DrawingEncoder {
  public:
   DrawingEncoder(uint8_t* out, size_t capacity);
+  // Palette index for the next strokes. Ends the current stroke.
+  bool set_color(uint8_t color);
   bool begin_stroke(int x, int y);
   bool add_point(int x, int y);
   size_t length() const { return failed_ ? 0 : len_; }
@@ -177,12 +182,23 @@ class DrawingEncoder {
   size_t count_pos_ = 0;
   bool in_stroke_ = false;
   bool failed_ = false;
+  uint8_t color_ = 0;
+  uint8_t pending_color_ = 0;
   int x_ = 0, y_ = 0;
 };
 
-// Calls `point(ctx, new_stroke, x, y)` for each point. False on malformed data.
-bool decode_drawing(const uint8_t* plaintext, size_t len, void (*point)(void* ctx, bool new_stroke, int x, int y),
-                    void* ctx);
+typedef void (*DrawingPoint)(void* ctx, bool new_stroke, int x, int y, uint8_t color);
+
+// Calls `point(ctx, new_stroke, x, y, color)` for each point. False on malformed data.
+bool decode_drawing(const uint8_t* plaintext, size_t len, DrawingPoint point, void* ctx);
+// Same for the drawing items alone (a drawing without its kind byte, as inside a note).
+bool decode_drawing_items(const uint8_t* items, size_t len, DrawingPoint point, void* ctx);
+
+// NOTE plaintext: text plus a drawing (`drawing` is a DRAWING plaintext, may be just the kind byte).
+// Returns the length, 0 if the text is too long. `out` needs 2 + text_len + drawing_len - 1 bytes.
+size_t note_plaintext(const char* text, size_t text_len, const uint8_t* drawing, size_t drawing_len, uint8_t* out);
+bool parse_note(const uint8_t* plaintext, size_t len, const char*& text, size_t& text_len, const uint8_t*& items,
+                size_t& items_len);
 
 // --- Serial framing (SPEC §12) ---
 

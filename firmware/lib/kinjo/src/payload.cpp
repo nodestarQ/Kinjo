@@ -63,8 +63,24 @@ bool DrawingEncoder::append_step(int x, int y) {
   return true;
 }
 
+bool DrawingEncoder::set_color(uint8_t color) {
+  if (failed_ || color >= PALETTE_SIZE) return false;
+  in_stroke_ = false;
+  pending_color_ = color;  // written with the next stroke, so unused colors cost nothing
+  return true;
+}
+
 bool DrawingEncoder::begin_stroke(int x, int y) {
   if (failed_) return false;
+  if (pending_color_ != color_) {
+    if (len_ + 2 > cap_) {
+      failed_ = true;
+      return false;
+    }
+    out_[len_++] = COLOR_MARKER;
+    out_[len_++] = pending_color_;
+    color_ = pending_color_;
+  }
   if (x < 0 || x >= CANVAS_W || y < 0 || y >= CANVAS_H || !start(x, y)) {
     failed_ = true;
     return false;
@@ -92,21 +108,51 @@ bool DrawingEncoder::add_point(int x, int y) {
   return true;
 }
 
-bool decode_drawing(const uint8_t* p, size_t len, void (*point)(void* ctx, bool new_stroke, int x, int y), void* ctx) {
+bool decode_drawing(const uint8_t* p, size_t len, DrawingPoint point, void* ctx) {
   if (len < 1 || p[0] != KIND_DRAWING) return false;
-  size_t i = 1;
+  return decode_drawing_items(p + 1, len - 1, point, ctx);
+}
+
+size_t note_plaintext(const char* text, size_t text_len, const uint8_t* drawing, size_t drawing_len, uint8_t* out) {
+  if (text_len > MAX_TEXT || drawing_len < 1 || drawing[0] != KIND_DRAWING) return 0;
+  out[0] = KIND_NOTE;
+  out[1] = (uint8_t)text_len;
+  memcpy(out + 2, text, text_len);
+  memcpy(out + 2 + text_len, drawing + 1, drawing_len - 1);
+  return 2 + text_len + drawing_len - 1;
+}
+
+bool parse_note(const uint8_t* p, size_t len, const char*& text, size_t& text_len, const uint8_t*& items,
+                size_t& items_len) {
+  if (len < 2 || p[0] != KIND_NOTE || p[1] > MAX_TEXT || 2u + p[1] > len) return false;
+  text = (const char*)p + 2;
+  text_len = p[1];
+  items = p + 2 + text_len;
+  items_len = len - 2 - text_len;
+  return true;
+}
+
+bool decode_drawing_items(const uint8_t* p, size_t len, DrawingPoint point, void* ctx) {
+  size_t i = 0;
+  uint8_t color = 0;
   while (i < len) {
     size_t count = p[i];
-    if (count == 0 || i + 5 + 2 * (count - 1) > len) return false;
+    if (count == COLOR_MARKER) {
+      if (i + 1 >= len || p[i + 1] >= PALETTE_SIZE) return false;
+      color = p[i + 1];
+      i += 2;
+      continue;
+    }
+    if (i + 5 + 2 * (count - 1) > len) return false;
     int x = p[i + 1] | p[i + 2] << 8;
     int y = p[i + 3] | p[i + 4] << 8;
     i += 5;
-    point(ctx, true, x, y);
+    point(ctx, true, x, y, color);
     for (size_t k = 1; k < count; k++) {
       x += (int8_t)p[i];
       y += (int8_t)p[i + 1];
       i += 2;
-      point(ctx, false, x, y);
+      point(ctx, false, x, y, color);
     }
   }
   return true;
