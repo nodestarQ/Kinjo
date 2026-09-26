@@ -2,39 +2,50 @@
 // Same look as the web app: grey console, blue-grey title bar, lined paper strips with a
 // colored name tab per sender (same colors as web/app/src/lib/kinjo/tabs.ts).
 //
-// Messages screen: the last messages as strips, newest at the bottom. Drawings as previews.
-// Note screen: lined paper to draw and write on. Toolbar at the right: color, ABC, clear, send.
-// SEND sends what is on the note: text, drawing or both (a NOTE message).
-// Palette screen: opened from the color button, 8 pen colors to pick from.
-// View screen: tap a drawing in the chat to see it full screen. The X closes it.
-// Keyboard screen: opened from the ABC button. The text goes onto the note, DONE returns to it.
+// Home: four tiles. Chat, Pay, Info (own name and key), Calibrate (touch).
+// Contacts: everyone the web app put on this device. Tap one to open the chat with them.
+// Chat: the last messages with that contact, newest at the bottom. WRITE A NOTE at the bottom.
+// Note: lined paper to draw and write on. Toolbar at the right: color, ABC, clear, send.
+//   SEND sends what is on the note: text, drawing or both (a NOTE message).
+// Palette: opened from the color button, 8 pen colors to pick from.
+// Keyboard: opened from ABC. The text goes onto the note, DONE returns to it.
+// View: tap a drawing in the chat to see it full screen. The X closes it.
+// "< Back" at the top left of every screen but Home goes back one screen, like the BACK button.
 //
 // Buttons (INPUT_PULLUP, pressed = LOW):
-//   MESSAGES  switch between the two screens
-//   ROOM      next contact as recipient
-//   SEND      messages screen: send "gm". Draw screen: send the drawing (same as the SEND button on screen).
+//   HOME   back to the home screen
+//   POWER  hold to switch off (deep sleep), press to switch on again
+//   BACK   back one screen
 #pragma once
 
 #include <TFT_eSPI.h>
+#include <WiFi.h>
+#include <driver/rtc_io.h>
+#include <esp_sleep.h>
 #include <kinjo.h>
 
 #include "node.h"
+#include "storage.h"
 
 namespace ui {
 
 using namespace kinjo;
 
-constexpr int PIN_MESSAGES = 25;
-constexpr int PIN_ROOM = 32;
-constexpr int PIN_SEND = 33;
+constexpr int PIN_HOME = 25;
+constexpr int PIN_POWER = 32;  // an RTC pin, so it can wake the ESP32
+constexpr int PIN_BACK = 33;
+constexpr int PIN_BACKLIGHT = 4;  // optional: screen LED on this pin instead of 3V3 turns it dark when off
 constexpr uint32_t DEBOUNCE_MS = 40;
+constexpr uint32_t POWER_HOLD_MS = 800;
 
 constexpr int W = 320, H = 240;
 constexpr int HEADER_H = 20;
 constexpr int TAB_H = 13;
 constexpr int RULE = 12;  // line spacing of the paper
-constexpr int THUMB_W = 96, THUMB_H = 72;
+constexpr int THUMB_H = 72;
 constexpr int STRIP_W = 272;  // own messages on the left, others on the right
+constexpr int BACK_W = 60;    // "< Back" in the title bar
+constexpr int WRITE_H = 30;   // WRITE A NOTE button of the chat
 
 constexpr uint16_t rgb(uint8_t r, uint8_t g, uint8_t b) {
   return ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3);
@@ -47,6 +58,7 @@ constexpr uint16_t RULE_COLOR = rgb(0xD7, 0xE2, 0xEC);
 constexpr uint16_t INK = rgb(0x26, 0x31, 0x3D);
 constexpr uint16_t GREY_TAB = rgb(0x9A, 0xA5, 0xB1);
 constexpr uint16_t FAIL = rgb(0xC0, 0x39, 0x2B);
+constexpr uint16_t ACCENT = rgb(0x3D, 0x6F, 0xD6);
 
 // Same list and hash (FNV-1a) as web/app/src/lib/kinjo/tabs.ts, so a device has the same color everywhere.
 constexpr uint16_t TAB_COLORS[] = {rgb(0x3D, 0x6F, 0xD6), rgb(0x2F, 0x9E, 0x5B), rgb(0xE0, 0x83, 0x2F),
@@ -64,22 +76,24 @@ constexpr uint16_t PEN_COLORS[PALETTE_SIZE] = {INK,
                                                rgb(0x8A, 0x57, 0xD6),
                                                rgb(0xD4, 0x54, 0x8E)};
 
-// Touch calibration from the hardware test (rotation 1). See docs/hardware.md.
-static uint16_t CAL_DATA[5] = {470, 3255, 371, 2826, 7};
+// Touch calibration from the hardware test (rotation 1), until the Calibrate screen saves a new one.
+static uint16_t cal_data[5] = {470, 3255, 371, 2826, 7};
 
 static TFT_eSPI tft;
 static DeviceState* state = nullptr;
 
-enum class Screen { Messages, Draw, Palette, View, Keyboard };
-static Screen screen = Screen::Messages;
-static uint8_t recipient = 0;
+enum class Screen { Home, Contacts, Chat, Note, Palette, Keyboard, View, Info, Pay };
+static Screen screen = Screen::Home;
+static uint8_t peer = 0;  // contact of the open chat
+static uint8_t unread[MAX_CONTACTS];
 
-// --- message history ---
+// --- message history (all chats together, oldest dropped first) ---
 
-constexpr int MAX_MSGS = 8;
+constexpr int MAX_MSGS = 16;
 constexpr int DRAWING_SLOTS = 4;
 
 struct Msg {
+  uint32_t peer;  // name hash of the other side
   char name[40];  // short name shown in the tab
   uint16_t color;
   bool outgoing;
@@ -93,7 +107,17 @@ static uint8_t drawings[DRAWING_SLOTS][MAX_PLAINTEXT];
 static size_t drawing_len[DRAWING_SLOTS];
 static uint8_t next_slot = 0;
 
-// Toolbar at the right edge of the draw screen.
+// Home: 2 x 2 tiles.
+constexpr int TILE_GAP = 10;
+constexpr int TILE_W = (W - 3 * TILE_GAP) / 2;
+constexpr int TILE_H = (H - HEADER_H - 3 * TILE_GAP) / 2;
+
+// Contacts: one row per contact, a page at a time.
+constexpr int ROW_H = 30;
+constexpr int ROWS = (H - HEADER_H) / ROW_H;  // the last row turns into "more" when needed
+static uint8_t contacts_page = 0;
+
+// Toolbar at the right edge of the note.
 constexpr int TOOL_W = 48;
 constexpr int TOOL_X = W - TOOL_W;
 constexpr int TOOL_COLOR_Y = HEADER_H;        // color button
@@ -101,7 +125,7 @@ constexpr int TOOL_ABC_Y = HEADER_H + 50;     // keyboard button
 constexpr int TOOL_CLEAR_Y = HEADER_H + 100;  // clear button
 constexpr int TOOL_SEND_Y = HEADER_H + 150;   // send button, to the bottom
 
-// Keyboard screen: a text strip, then 5 rows of keys.
+// Keyboard: a text strip, then 5 rows of keys.
 constexpr int KB_TEXT_H = 34;
 constexpr int KB_TOP = HEADER_H + KB_TEXT_H;
 constexpr int KB_ROWS = 5;
@@ -111,15 +135,14 @@ static const char* const KB_LETTERS[4] = {"1234567890", "qwertyuiop", "asdfghjkl
 static char kb_text[MAX_TEXT + 1];
 static size_t kb_len = 0;
 static bool kb_shift = false;
-constexpr uint16_t ACCENT = rgb(0x3D, 0x6F, 0xD6);
-// Palette screen: 4 x 2 color fields.
+// Palette: 4 x 2 color fields.
 constexpr int GAP = 8;
 constexpr int CELL_W = (W - 5 * GAP) / 4;
 constexpr int CELL_H = (H - HEADER_H - 3 * GAP) / 2;
 static uint8_t pen_color = 0;
 static bool touch_down = false;  // for taps: act once per touch
 
-// Where the drawings are on the messages screen, for taps.
+// Where the drawings are on the chat screen, for taps.
 struct Hit {
   int y0, y1;
   uint8_t msg;
@@ -128,8 +151,10 @@ static Hit hits[MAX_MSGS];
 static uint8_t hit_count = 0;
 constexpr int CLOSE_W = 44;  // X button of the view screen
 
+// The note being written. It stays until it's sent or cleared, or the chat changes.
 static uint8_t canvas[MAX_PLAINTEXT];
 static DrawingEncoder* encoder = nullptr;
+static int note_peer = -1;
 static bool in_stroke = false;
 static int last_x = 0, last_y = 0;
 static uint32_t last_touch_ms = 0;
@@ -138,15 +163,20 @@ struct Button {
   int pin;
   bool down;
   uint32_t changed_ms;
+  bool held;  // a long press already acted
 };
-static Button buttons[3] = {{PIN_MESSAGES, false, 0}, {PIN_ROOM, false, 0}, {PIN_SEND, false, 0}};
+static Button buttons[3] = {{PIN_HOME, false, 0, false}, {PIN_POWER, false, 0, false}, {PIN_BACK, false, 0, false}};
 
 // --- helpers ---
 
-static uint16_t tab_color(const char* name, size_t len) {
+static uint32_t name_hash(const char* name, size_t len) {
   uint32_t h = 0x811C9DC5;
   for (size_t i = 0; i < len; i++) h = (h ^ (uint8_t)name[i]) * 0x01000193;
-  return TAB_COLORS[h % (sizeof(TAB_COLORS) / sizeof(TAB_COLORS[0]))];
+  return h;
+}
+
+static uint16_t tab_color(const char* name, size_t len) {
+  return TAB_COLORS[name_hash(name, len) % (sizeof(TAB_COLORS) / sizeof(TAB_COLORS[0]))];
 }
 
 // "handheld.alice.kinjo.eth" -> "handheld.alice"
@@ -160,13 +190,15 @@ static void short_name(const char* name, size_t len, char* out, size_t cap) {
   out[n] = 0;
 }
 
-static const Contact* current_contact() {
+static const Contact* chat_contact() {
   if (!state->contact_count) return nullptr;
-  if (recipient >= state->contact_count) recipient = 0;
-  return &state->contacts[recipient];
+  if (peer >= state->contact_count) peer = 0;
+  return &state->contacts[peer];
 }
 
-static Msg& new_msg(const char* full_name, size_t name_len, bool outgoing) {
+static uint32_t contact_hash(const Contact& c) { return name_hash(c.name, c.name_len); }
+
+static Msg& new_msg(const Contact& other, const char* tab_name, size_t tab_len, bool outgoing) {
   if (msg_count == MAX_MSGS) {
     if (msgs[0].drawing >= 0) drawing_len[msgs[0].drawing] = 0;
     memmove(msgs, msgs + 1, sizeof(Msg) * (MAX_MSGS - 1));
@@ -174,8 +206,9 @@ static Msg& new_msg(const char* full_name, size_t name_len, bool outgoing) {
   }
   Msg& m = msgs[msg_count++];
   memset(&m, 0, sizeof(m));
-  short_name(full_name, name_len, m.name, sizeof(m.name));
-  m.color = tab_color(full_name, name_len);
+  m.peer = contact_hash(other);
+  short_name(tab_name, tab_len, m.name, sizeof(m.name));
+  m.color = tab_color(tab_name, tab_len);
   m.outgoing = outgoing;
   m.drawing = -1;
   return m;
@@ -214,20 +247,31 @@ static void name_tab(int x, int y, const char* name, uint16_t color) {
   tft.drawString(name, x + 4, y + 3);
 }
 
-static void title_bar(const char* left) {
-  tft.fillRect(0, 0, W, HEADER_H, FRAME);
+// Title bar with an optional "<" (back) at the left and a note at the right.
+static void title_bar(const char* left, const char* right = "", bool back = true, uint16_t fill = FRAME) {
+  tft.fillRect(0, 0, W, HEADER_H, fill);
   tft.setTextFont(2);
-  tft.setTextColor(TFT_WHITE, FRAME);
+  tft.setTextColor(TFT_WHITE, fill);
   tft.setTextDatum(TL_DATUM);
-  tft.drawString(left, 6, 2);
-  char to[48] = "no contacts yet";
-  if (const Contact* c = current_contact()) {
-    char name[40];
-    short_name(c->name, c->name_len, name, sizeof(name));
-    snprintf(to, sizeof(to), "to %s", name);
+  int x = 6;
+  if (back) {
+    tft.fillRect(0, 0, BACK_W - 6, HEADER_H, FRAME_DARK);
+    tft.setTextColor(TFT_WHITE, FRAME_DARK);
+    tft.drawString("< Back", 6, 2);
+    tft.setTextColor(TFT_WHITE, fill);
+    x = BACK_W;
   }
+  tft.drawString(left, x, 2);
   tft.setTextDatum(TR_DATUM);
-  tft.drawString(to, W - 6, 2);
+  tft.drawString(right, W - 6, 2);
+  tft.setTextDatum(TL_DATUM);
+}
+
+static void centered(const char* text, int y, uint16_t color = FRAME_DARK, uint16_t bg = CONSOLE) {
+  tft.setTextFont(2);
+  tft.setTextColor(color, bg);
+  tft.setTextDatum(MC_DATUM);
+  tft.drawString(text, W / 2, y);
   tft.setTextDatum(TL_DATUM);
 }
 
@@ -260,8 +304,6 @@ static void thumb_point(void* ctx, bool new_stroke, int x, int y, uint8_t color)
   t.py = sy;
 }
 
-// --- messages screen ---
-
 // Size of a drawing preview: the drawn area, scaled by one factor to fit, never above 1:1.
 struct Preview {
   Bounds b;
@@ -281,6 +323,129 @@ static Preview preview_of(const Msg& m) {
   p.h = bh * p.num / p.den;
   return p;
 }
+
+// --- home screen ---
+
+static void tile_frame(int i, const char* label) {
+  int x = TILE_GAP + (i % 2) * (TILE_W + TILE_GAP), y = HEADER_H + TILE_GAP + (i / 2) * (TILE_H + TILE_GAP);
+  tft.fillRect(x, y, TILE_W, TILE_H, PAPER);
+  tft.drawRect(x, y, TILE_W, TILE_H, FRAME_DARK);
+  tft.drawRect(x + 1, y + 1, TILE_W - 2, TILE_H - 2, FRAME_DARK);
+  tft.setTextFont(2);
+  tft.setTextColor(INK, PAPER);
+  tft.setTextDatum(BC_DATUM);
+  tft.drawString(label, x + TILE_W / 2, y + TILE_H - 6);
+  tft.setTextDatum(TL_DATUM);
+}
+
+static void tile_center(int i, int& cx, int& cy) {
+  cx = TILE_GAP + (i % 2) * (TILE_W + TILE_GAP) + TILE_W / 2;
+  cy = HEADER_H + TILE_GAP + (i / 2) * (TILE_H + TILE_GAP) + TILE_H / 2 - 10;
+}
+
+static void show_home() {
+  tft.fillScreen(CONSOLE);
+  char own[40] = "not set up yet";
+  if (state->name_len) short_name(state->name, state->name_len, own, sizeof(own));
+  title_bar(own, "kinjo", false);
+  int cx, cy;
+
+  tile_frame(0, "Chat");  // speech bubble
+  tile_center(0, cx, cy);
+  tft.fillRoundRect(cx - 26, cy - 18, 52, 32, 6, ACCENT);
+  tft.fillTriangle(cx - 14, cy + 13, cx - 4, cy + 13, cx - 18, cy + 24, ACCENT);
+  for (int d = -12; d <= 12; d += 12) tft.fillCircle(cx + d, cy - 2, 3, TFT_WHITE);
+  uint16_t total = 0;
+  for (uint8_t i = 0; i < state->contact_count; i++) total += unread[i];
+  if (total) {
+    char n[6];
+    snprintf(n, sizeof(n), "%u", total);
+    tft.fillCircle(cx + 28, cy - 18, 10, FAIL);
+    tft.setTextFont(2);
+    tft.setTextColor(TFT_WHITE, FAIL);
+    tft.setTextDatum(MC_DATUM);
+    tft.drawString(n, cx + 28, cy - 18);
+    tft.setTextDatum(TL_DATUM);
+  }
+
+  tile_frame(1, "Pay");  // coin with a diamond
+  tile_center(1, cx, cy);
+  tft.fillCircle(cx, cy, 24, rgb(0xC9, 0xA2, 0x27));
+  tft.fillTriangle(cx, cy - 16, cx - 10, cy, cx + 10, cy, TFT_WHITE);
+  tft.fillTriangle(cx, cy + 16, cx - 10, cy + 3, cx + 10, cy + 3, TFT_WHITE);
+
+  tile_frame(2, "Info");  // "i" in a circle
+  tile_center(2, cx, cy);
+  tft.fillCircle(cx, cy, 24, rgb(0x2F, 0x9E, 0x5B));
+  tft.fillCircle(cx, cy - 12, 4, TFT_WHITE);
+  tft.fillRect(cx - 3, cy - 4, 7, 20, TFT_WHITE);
+
+  tile_frame(3, "Calibrate");  // crosshair
+  tile_center(3, cx, cy);
+  tft.drawCircle(cx, cy, 20, rgb(0xD4, 0x54, 0x8E));
+  tft.drawCircle(cx, cy, 19, rgb(0xD4, 0x54, 0x8E));
+  tft.fillRect(cx - 26, cy - 1, 52, 3, rgb(0xD4, 0x54, 0x8E));
+  tft.fillRect(cx - 1, cy - 26, 3, 52, rgb(0xD4, 0x54, 0x8E));
+}
+
+// --- contacts screen ---
+
+static void show_contacts() {
+  tft.fillScreen(CONSOLE);
+  char count[16];
+  snprintf(count, sizeof(count), "%u", state->contact_count);
+  title_bar("Contacts", count);
+  if (!state->contact_count) {
+    centered("No contacts yet.", H / 2 - 10);
+    centered("Add them in the Kinjo web app.", H / 2 + 10);
+    return;
+  }
+  bool paged = state->contact_count > ROWS;
+  int per_page = paged ? ROWS - 1 : ROWS;
+  if (contacts_page * per_page >= state->contact_count) contacts_page = 0;
+  for (int r = 0; r < per_page; r++) {
+    int i = contacts_page * per_page + r;
+    if (i >= state->contact_count) break;
+    const Contact& c = state->contacts[i];
+    int y = HEADER_H + r * ROW_H;
+    tft.fillRect(0, y, W, ROW_H - 2, PAPER);
+    uint16_t color = tab_color(c.name, c.name_len);
+    tft.fillRect(0, y, 8, ROW_H - 2, color);
+    char name[40];
+    short_name(c.name, c.name_len, name, sizeof(name));
+    tft.setTextFont(2);
+    tft.setTextColor(INK, PAPER);
+    tft.drawString(name, 16, y + 6);
+    int x = W - 10;
+    if (unread[i]) {
+      char n[6];
+      snprintf(n, sizeof(n), "%u", unread[i]);
+      tft.fillCircle(x - 8, y + ROW_H / 2 - 1, 9, FAIL);
+      tft.setTextColor(TFT_WHITE, FAIL);
+      tft.setTextDatum(MC_DATUM);
+      tft.drawString(n, x - 8, y + ROW_H / 2 - 1);
+      tft.setTextDatum(TL_DATUM);
+      x -= 24;
+    }
+    if (c.flags & FLAG_VERIFIED) {
+      tft.setTextFont(1);
+      tft.setTextColor(ACCENT, PAPER);
+      tft.setTextDatum(MR_DATUM);
+      tft.drawString("human", x, y + ROW_H / 2 - 1);
+      tft.setTextDatum(TL_DATUM);
+    }
+  }
+  if (paged) {
+    int y = HEADER_H + (ROWS - 1) * ROW_H;
+    tft.fillRect(0, y, W, ROW_H - 2, FRAME);
+    char more[24];
+    int pages = (state->contact_count + per_page - 1) / per_page;
+    snprintf(more, sizeof(more), "more (%d/%d)", contacts_page + 1, pages);
+    centered(more, y + ROW_H / 2 - 1, TFT_WHITE, FRAME);
+  }
+}
+
+// --- chat screen ---
 
 static int text_lines(const Msg& m) {
   tft.setTextFont(2);
@@ -345,7 +510,7 @@ static void draw_msg(const Msg& m, int y) {
   int tab_w = tft.textWidth(m.name) + 8;
   name_tab(m.outgoing ? x : x + sw - tab_w, y, m.name, color);
   int sy = y + TAB_H;
-  tft.fillRect(x, sy, sw, sh, PAPER);  // plain: only the draw screen is ruled
+  tft.fillRect(x, sy, sw, sh, PAPER);  // plain: only the note is ruled
   tft.drawRect(x, sy, sw, sh, color);
   tft.drawRect(x + 1, sy + 1, sw - 2, sh - 2, color);
   int ty = sy + 4;
@@ -356,7 +521,7 @@ static void draw_msg(const Msg& m, int y) {
   if (m.drawing >= 0) {
     Preview p = preview_of(m);
     Thumb t = {x + 6, ty, p.b.x0, p.b.y0, p.num, p.den, 0, 0};
-    // Ruled like the draw screen, at the same scale.
+    // Ruled like the note, at the same scale.
     for (int ly = RULE - (p.b.y0 % RULE); ly * p.num / p.den < p.h; ly += RULE) {
       tft.drawFastHLine(t.x, t.y + ly * p.num / p.den, p.w, RULE_COLOR);
     }
@@ -364,21 +529,27 @@ static void draw_msg(const Msg& m, int y) {
   }
 }
 
-static void show_messages() {
+static void show_chat() {
   tft.fillScreen(CONSOLE);
-  title_bar("ROOM kinjo.eth");
-  if (!msg_count) {
-    tft.setTextFont(2);
-    tft.setTextColor(FRAME_DARK, CONSOLE);
-    tft.setTextDatum(MC_DATUM);
-    tft.drawString(state->contact_count ? "Nobody has said anything yet." : "Set me up in the Kinjo web app.", W / 2, H / 2);
-    tft.setTextDatum(TL_DATUM);
-    return;
-  }
+  const Contact* c = chat_contact();
+  if (!c) return;
+  unread[peer] = 0;
+  char name[40];
+  short_name(c->name, c->name_len, name, sizeof(name));
+  title_bar(name, c->flags & FLAG_VERIFIED ? "human" : "", true, tab_color(c->name, c->name_len));
+
+  // WRITE A NOTE, full width at the bottom.
+  tft.fillRect(0, H - WRITE_H, W, WRITE_H, ACCENT);
+  centered("WRITE A NOTE", H - WRITE_H / 2, TFT_WHITE, ACCENT);
+
   // Newest at the bottom, as many as fit.
-  int y = H - 2;
+  uint32_t h_peer = contact_hash(*c);
+  int y = H - WRITE_H - 4;
   hit_count = 0;
+  bool any = false;
   for (int i = msg_count - 1; i >= 0; i--) {
+    if (msgs[i].peer != h_peer) continue;
+    any = true;
     int h = TAB_H + strip_height(msgs[i]);
     if (y - h < HEADER_H + 2) break;
     y -= h;
@@ -386,15 +557,19 @@ static void show_messages() {
     if (msgs[i].drawing >= 0) hits[hit_count++] = {y, y + h, (uint8_t)i};
     y -= 4;
   }
+  if (!any) centered("Nothing here yet. Say hi!", (H - WRITE_H + HEADER_H) / 2);
 }
 
-// --- draw screen ---
+// --- note ---
 
-static void reset_canvas() {
+static void reset_note() {
   static uint8_t encoder_mem[sizeof(DrawingEncoder)];
   encoder = new (encoder_mem) DrawingEncoder(canvas, sizeof(canvas));
   encoder->set_color(pen_color);
   in_stroke = false;
+  kb_len = 0;
+  kb_text[0] = 0;
+  note_peer = peer;
 }
 
 static void pen(int x0, int y0, int x1, int y1, uint16_t c) {
@@ -423,7 +598,7 @@ static void draw_toolbar() {
   tool_button(TOOL_SEND_Y, H - TOOL_SEND_Y, ACCENT, "SEND", TFT_WHITE);
 }
 
-// Redraws what is already in the canvas, after the palette screen covered it.
+// Redraws what is already on the note, after another screen covered it.
 static int redraw_x, redraw_y;
 static void redraw_point(void*, bool new_stroke, int x, int y, uint8_t color) {
   if (new_stroke) tft.fillCircle(x, y, 1, PEN_COLORS[color]);
@@ -432,10 +607,17 @@ static void redraw_point(void*, bool new_stroke, int x, int y, uint8_t color) {
   redraw_y = y;
 }
 
-static void show_canvas(bool keep) {
+static void show_note() {
+  if (!encoder || note_peer != peer) reset_note();  // a note belongs to one chat
   paper(0, HEADER_H, TOOL_X, H - HEADER_H);
   draw_toolbar();
-  title_bar("NOTE");
+  char title[48] = "NOTE";
+  if (const Contact* c = chat_contact()) {
+    char name[40];
+    short_name(c->name, c->name_len, name, sizeof(name));
+    snprintf(title, sizeof(title), "NOTE to %s", name);
+  }
+  title_bar(title);
   char own[40];
   short_name(state->name, state->name_len, own, sizeof(own));
   if (state->name_len) name_tab(0, HEADER_H, own, tab_color(state->name, state->name_len));
@@ -446,12 +628,9 @@ static void show_canvas(bool keep) {
     while (*shown && tft.textWidth(shown) > TOOL_X - 8) shown++;
     tft.drawString(shown, 4, HEADER_H + TAB_H + 2);
   }
-  if (keep && encoder) {
-    decode_drawing(canvas, encoder->length(), redraw_point, nullptr);
-    encoder->set_color(pen_color);
-  } else {
-    reset_canvas();
-  }
+  decode_drawing(canvas, encoder->length(), redraw_point, nullptr);
+  encoder->set_color(pen_color);
+  in_stroke = false;
 }
 
 static uint8_t viewing = 0;  // message shown on the view screen
@@ -513,7 +692,7 @@ static void kb_draw_keys() {
       kb_key(col, row, 1, label, TFT_WHITE, INK);
     }
   }
-  // Bottom row: shift (2), space (4), del (2), send (2)
+  // Bottom row: shift (2), space (4), del (2), done (2)
   kb_key(0, 4, 2, "SHIFT", kb_shift ? FRAME_DARK : TFT_WHITE, kb_shift ? TFT_WHITE : INK);
   kb_key(2, 4, 4, "space", TFT_WHITE, INK);
   kb_key(6, 4, 2, "DEL", TFT_WHITE, INK);
@@ -540,35 +719,154 @@ static void show_palette() {
   }
 }
 
+// --- info, pay, calibrate ---
+
+static void info_row(int& y, const char* label, const char* value) {
+  tft.setTextFont(1);
+  tft.setTextColor(FRAME_DARK, CONSOLE);
+  tft.drawString(label, 8, y);
+  tft.setTextFont(2);
+  tft.setTextColor(INK, CONSOLE);
+  tft.drawString(value, 8, y + 9);
+  y += 30;
+}
+
+static void show_info() {
+  tft.fillScreen(CONSOLE);
+  title_bar("Info");
+  int y = HEADER_H + 6;
+  char buf[72];
+  if (state->name_len) {
+    memcpy(buf, state->name, state->name_len);
+    buf[state->name_len] = 0;
+  } else {
+    strcpy(buf, "not registered yet");
+  }
+  info_row(y, "ENS NAME", buf);
+  snprintf(buf, sizeof(buf), "%08lx", (unsigned long)node_id(state->pub));
+  info_row(y, "NODE ID", buf);
+  // Public key in two lines of 32 hex digits.
+  tft.setTextFont(1);
+  tft.setTextColor(FRAME_DARK, CONSOLE);
+  tft.drawString("PUBLIC KEY (xyz.kinjo.encryption-key)", 8, y);
+  tft.setTextFont(2);
+  tft.setTextColor(INK, CONSOLE);
+  for (int line = 0; line < 2; line++) {
+    for (int i = 0; i < 16; i++) snprintf(buf + i * 2, 3, "%02x", state->pub[line * 16 + i]);
+    tft.drawString(buf, 8, y + 9 + line * 16);
+  }
+  y += 46;
+  snprintf(buf, sizeof(buf), "%u", state->contact_count);
+  info_row(y, "CONTACTS", buf);
+  info_row(y, "RADIO MAC", WiFi.macAddress().c_str());
+}
+
+static void show_pay() {
+  tft.fillScreen(CONSOLE);
+  title_bar("Pay");
+  centered("Payments over the mesh", H / 2 - 20, INK);
+  centered("are coming soon.", H / 2, INK);
+  centered("Signed here, sent on once a node is online.", H / 2 + 28);
+}
+
+// Runs TFT_eSPI's four-corner calibration and keeps the result in flash.
+static void calibrate() {
+  tft.fillScreen(CONSOLE);
+  title_bar("Calibrate", "", false);
+  centered("Lift your finger, then touch", H / 2 - 10, INK);
+  centered("each arrow as it shows up.", H / 2 + 10, INK);
+  while (tft.getTouchRawZ() > 100) delay(10);  // the tap that opened this screen
+  delay(1500);
+  tft.fillScreen(TFT_BLACK);
+  tft.calibrateTouch(cal_data, TFT_MAGENTA, TFT_BLACK, 15);
+  tft.setTouch(cal_data);
+  storage::save_touch(cal_data);
+  while (tft.getTouchRawZ() > 100) delay(10);
+  touch_down = false;
+}
+
 static void switch_to(Screen s) {
-  Screen from = screen;
   screen = s;
-  if (s == Screen::Messages) show_messages();
-  else if (s == Screen::Palette) show_palette();
-  else if (s == Screen::View) show_view();
-  else if (s == Screen::Keyboard) show_keyboard();
-  else show_canvas(from == Screen::Palette);  // coming back from the palette keeps the drawing
+  switch (s) {
+    case Screen::Home: show_home(); break;
+    case Screen::Contacts: show_contacts(); break;
+    case Screen::Chat: show_chat(); break;
+    case Screen::Note: show_note(); break;
+    case Screen::Palette: show_palette(); break;
+    case Screen::Keyboard: show_keyboard(); break;
+    case Screen::View: show_view(); break;
+    case Screen::Info: show_info(); break;
+    case Screen::Pay: show_pay(); break;
+  }
+}
+
+static void back() {
+  switch (screen) {
+    case Screen::Home: break;
+    case Screen::Chat: switch_to(Screen::Contacts); break;
+    case Screen::Note: switch_to(Screen::Chat); break;
+    case Screen::Palette:
+    case Screen::Keyboard: switch_to(Screen::Note); break;
+    case Screen::View: switch_to(Screen::Chat); break;
+    default: switch_to(Screen::Home); break;
+  }
+}
+
+// --- power ---
+
+static void backlight(bool on) {
+  gpio_hold_dis((gpio_num_t)PIN_BACKLIGHT);
+  pinMode(PIN_BACKLIGHT, OUTPUT);
+  digitalWrite(PIN_BACKLIGHT, on ? HIGH : LOW);
+}
+
+// Deep sleep until POWER is pressed again. Waking up restarts the handheld (setup() runs again).
+static void power_off() {
+  tft.fillScreen(CONSOLE);
+  centered("Bye", H / 2, INK);
+  while (digitalRead(PIN_POWER) == LOW) delay(10);  // a held button would wake it right away
+  delay(300);
+  tft.writecommand(0x28);  // display off
+  tft.writecommand(0x10);  // display sleep
+  backlight(false);
+  gpio_hold_en((gpio_num_t)PIN_BACKLIGHT);
+  gpio_deep_sleep_hold_en();
+  rtc_gpio_pullup_en((gpio_num_t)PIN_POWER);
+  rtc_gpio_pulldown_dis((gpio_num_t)PIN_POWER);
+  esp_sleep_enable_ext0_wakeup((gpio_num_t)PIN_POWER, 0);
+  esp_deep_sleep_start();
 }
 
 // --- public ---
 
 inline void begin(DeviceState& s) {
   state = &s;
-  for (Button& b : buttons) pinMode(b.pin, INPUT_PULLUP);
+  backlight(true);
+  for (Button& b : buttons) {
+    pinMode(b.pin, INPUT_PULLUP);
+    // Woken up by POWER: it's still held, don't count that as a press to switch off.
+    b.down = b.held = digitalRead(b.pin) == LOW;
+  }
+  storage::load_touch(cal_data);
   tft.init();
   tft.setRotation(1);
-  tft.setTouch(CAL_DATA);
-  show_messages();
+  tft.setTouch(cal_data);
+  show_home();
 }
 
 /** Call after provisioning changed the state (name, contacts). */
-inline void refresh() { switch_to(screen); }
+inline void refresh() {
+  memset(unread, 0, sizeof(unread));
+  if (screen == Screen::Chat || screen == Screen::Note || screen == Screen::View) {
+    screen = Screen::Contacts;  // the open chat's contact may be gone
+  }
+  switch_to(screen);
+}
 
 inline void on_message(const Contact& from, const uint8_t* pt, size_t len) {
-  Msg& m = new_msg(from.name, from.name_len, false);
+  Msg& m = new_msg(from, from.name, from.name_len, false);
   if (pt[0] == KIND_TEXT) {
-    size_t n = len - 1 < sizeof(m.text) - 1 ? len - 1 : sizeof(m.text) - 1;
-    memcpy(m.text, pt + 1, n);
+    set_text(m, (const char*)pt + 1, len - 1);
   } else if (pt[0] == KIND_DRAWING) {
     store_items(m, pt + 1, len - 1);
   } else if (pt[0] == KIND_NOTE) {
@@ -579,12 +877,16 @@ inline void on_message(const Contact& from, const uint8_t* pt, size_t len) {
     set_text(m, text, text_len);
     store_items(m, items, items_len);
   }
-  if (screen == Screen::Messages) show_messages();
+  uint8_t i = &from - state->contacts;
+  bool open = screen == Screen::Chat && i == peer;
+  if (!open && i < MAX_CONTACTS && unread[i] < 99) unread[i]++;
+  if (screen == Screen::Chat || screen == Screen::Contacts || screen == Screen::Home) switch_to(screen);
 }
 
 // `drawing` is a DRAWING plaintext (or null).
-static void add_own(const char* text, size_t text_len, bool failed, const uint8_t* drawing, size_t drawing_len_) {
-  Msg& m = new_msg(state->name, state->name_len, true);
+static void add_own(const Contact& to, const char* text, size_t text_len, bool failed, const uint8_t* drawing,
+                    size_t drawing_len_) {
+  Msg& m = new_msg(to, state->name, state->name_len, true);
   m.failed = failed;
   if (text) set_text(m, text, text_len);
   if (drawing && drawing_len_ > 1) store_items(m, drawing + 1, drawing_len_ - 1);
@@ -594,7 +896,7 @@ static uint8_t note_buf[MAX_PLAINTEXT];
 
 /** Sends the note: only text, only the drawing, or both as one NOTE. Then back to the chat. */
 static void send_note() {
-  const Contact* to = current_contact();
+  const Contact* to = chat_contact();
   size_t dlen = encoder->length();
   bool has_drawing = dlen > 1, has_text = kb_len > 0;
   if (!to || (!has_drawing && !has_text)) return;
@@ -607,107 +909,139 @@ static void send_note() {
   } else {
     ok = node::send_text(*to, kb_text, kb_len);
   }
-  if (ok) add_own(has_text ? kb_text : nullptr, kb_len, false, has_drawing ? canvas : nullptr, dlen);
-  else add_own("sending failed", 14, true, nullptr, 0);
-  kb_len = 0;
-  kb_text[0] = 0;
-  switch_to(Screen::Messages);
-}
-
-static void send_gm() {
-  const Contact* to = current_contact();
-  if (!to) return;
-  bool ok = node::send_text(*to, "gm", 2);
-  add_own(ok ? "gm" : "sending failed", ok ? 2 : 14, !ok, nullptr, 0);
-  show_messages();
+  if (ok) add_own(*to, has_text ? kb_text : nullptr, kb_len, false, has_drawing ? canvas : nullptr, dlen);
+  else add_own(*to, "sending failed", 14, true, nullptr, 0);
+  reset_note();
+  switch_to(Screen::Chat);
 }
 
 static void on_press(int pin) {
-  if (pin == PIN_MESSAGES) {
-    switch_to(screen == Screen::Messages ? Screen::Draw : Screen::Messages);  // also leaves view and palette
-  } else if (pin == PIN_ROOM) {
-    if (state->contact_count) recipient = (recipient + 1) % state->contact_count;
-    if (screen == Screen::Messages) title_bar("ROOM kinjo.eth");
-    else if (screen == Screen::Draw) title_bar("NOTE");
-  } else if (pin == PIN_SEND) {
-    if (screen == Screen::Draw || screen == Screen::Keyboard) send_note();
-    else if (screen == Screen::Messages) send_gm();
-  }
+  if (pin == PIN_HOME) switch_to(Screen::Home);
+  else if (pin == PIN_BACK) back();
 }
 
 static void poll_buttons(uint32_t now) {
   for (Button& b : buttons) {
     bool down = digitalRead(b.pin) == LOW;
+    if (down && b.pin == PIN_POWER && !b.held && b.down && now - b.changed_ms >= POWER_HOLD_MS) {
+      b.held = true;
+      power_off();
+    }
     if (down == b.down || now - b.changed_ms < DEBOUNCE_MS) continue;
     b.down = down;
     b.changed_ms = now;
-    if (down) on_press(b.pin);
+    if (!down) b.held = false;
+    else if (b.pin != PIN_POWER) on_press(b.pin);
   }
 }
 
-// Taps on the toolbar and the palette act once per touch. Strokes need the pen held down.
-static void on_tap(int x, int y) {
-  if (screen == Screen::Messages) {
-    for (uint8_t i = 0; i < hit_count; i++) {
-      if (y >= hits[i].y0 && y < hits[i].y1 && msgs[hits[i].msg].drawing >= 0) {
-        viewing = hits[i].msg;
-        switch_to(Screen::View);
-        return;
-      }
-    }
+static void on_tap_home(int x, int y) {
+  if (y < HEADER_H + TILE_GAP) return;
+  int col = x < W / 2 ? 0 : 1, row = y < HEADER_H + TILE_GAP + TILE_H + TILE_GAP / 2 ? 0 : 1;
+  int tile = row * 2 + col;
+  if (tile == 0) switch_to(Screen::Contacts);
+  else if (tile == 1) switch_to(Screen::Pay);
+  else if (tile == 2) switch_to(Screen::Info);
+  else {
+    calibrate();
+    switch_to(Screen::Home);
+  }
+}
+
+static void on_tap_contacts(int, int y) {
+  if (y < HEADER_H || !state->contact_count) return;
+  int r = (y - HEADER_H) / ROW_H;
+  bool paged = state->contact_count > ROWS;
+  int per_page = paged ? ROWS - 1 : ROWS;
+  if (paged && r == ROWS - 1) {
+    contacts_page++;
+    show_contacts();
     return;
   }
-  if (screen == Screen::Keyboard) {
-    if (y < KB_TOP) return;
-    int row = (y - KB_TOP) / KEY_H, col = x / KEY_W;
-    if (row < 4 && col < 10) {
-      char c = KB_LETTERS[row][col];
-      if (kb_shift && c >= 'a' && c <= 'z') c -= 32;
-      if (kb_len < MAX_TEXT) kb_text[kb_len++] = c;
-      kb_text[kb_len] = 0;
-      if (kb_shift) {
-        kb_shift = false;
-        kb_draw_keys();
-      }
-      kb_draw_text();
-    } else if (row == 4 && col < 2) {
-      kb_shift = !kb_shift;
+  int i = contacts_page * per_page + r;
+  if (r >= per_page || i >= state->contact_count) return;
+  peer = i;
+  switch_to(Screen::Chat);
+}
+
+static void on_tap_keyboard(int x, int y) {
+  if (y < KB_TOP) return;
+  int row = (y - KB_TOP) / KEY_H, col = x / KEY_W;
+  if (row < 4 && col < 10) {
+    char c = KB_LETTERS[row][col];
+    if (kb_shift && c >= 'a' && c <= 'z') c -= 32;
+    if (kb_len < MAX_TEXT) kb_text[kb_len++] = c;
+    kb_text[kb_len] = 0;
+    if (kb_shift) {
+      kb_shift = false;
       kb_draw_keys();
-    } else if (row == 4 && col < 6) {
-      if (kb_len < MAX_TEXT) kb_text[kb_len++] = ' ';
-      kb_text[kb_len] = 0;
-      kb_draw_text();
-    } else if (row == 4 && col < 8) {
-      if (kb_len) kb_text[--kb_len] = 0;
-      kb_draw_text();
-    } else if (row == 4) {
-      switch_to(Screen::Draw);  // back to the note, keeping text and drawing
     }
-    return;
+    kb_draw_text();
+  } else if (row == 4 && col < 2) {
+    kb_shift = !kb_shift;
+    kb_draw_keys();
+  } else if (row == 4 && col < 6) {
+    if (kb_len < MAX_TEXT) kb_text[kb_len++] = ' ';
+    kb_text[kb_len] = 0;
+    kb_draw_text();
+  } else if (row == 4 && col < 8) {
+    if (kb_len) kb_text[--kb_len] = 0;
+    kb_draw_text();
+  } else if (row == 4) {
+    switch_to(Screen::Note);  // back to the note, keeping text and drawing
   }
+}
+
+// Taps act once per touch. Strokes on the note need the pen held down.
+static void on_tap(int x, int y) {
   if (screen == Screen::View) {
-    if (x >= W - CLOSE_W && y < HEADER_H + 10) switch_to(Screen::Messages);
+    if (x >= W - CLOSE_W && y < HEADER_H + 10) switch_to(Screen::Chat);
     return;
   }
-  if (screen == Screen::Palette) {
-    for (uint8_t i = 0; i < PALETTE_SIZE; i++) {
-      int cx = GAP + (i % 4) * (CELL_W + GAP), cy = HEADER_H + GAP + (i / 4) * (CELL_H + GAP);
-      if (x >= cx && x < cx + CELL_W && y >= cy && y < cy + CELL_H) {
-        pen_color = i;
-        switch_to(Screen::Draw);
+  if (screen != Screen::Home && y < HEADER_H && x < BACK_W) {
+    back();
+    return;
+  }
+  switch (screen) {
+    case Screen::Home: on_tap_home(x, y); break;
+    case Screen::Contacts: on_tap_contacts(x, y); break;
+    case Screen::Chat:
+      if (y >= H - WRITE_H) {
+        switch_to(Screen::Note);
         return;
       }
-    }
-    return;
+      for (uint8_t i = 0; i < hit_count; i++) {
+        if (y >= hits[i].y0 && y < hits[i].y1 && msgs[hits[i].msg].drawing >= 0) {
+          viewing = hits[i].msg;
+          switch_to(Screen::View);
+          return;
+        }
+      }
+      break;
+    case Screen::Keyboard: on_tap_keyboard(x, y); break;
+    case Screen::Palette:
+      for (uint8_t i = 0; i < PALETTE_SIZE; i++) {
+        int cx = GAP + (i % 4) * (CELL_W + GAP), cy = HEADER_H + GAP + (i / 4) * (CELL_H + GAP);
+        if (x >= cx && x < cx + CELL_W && y >= cy && y < cy + CELL_H) {
+          pen_color = i;
+          switch_to(Screen::Note);
+          return;
+        }
+      }
+      break;
+    case Screen::Note:  // toolbar
+      if (y < HEADER_H) break;
+      if (y < TOOL_ABC_Y) switch_to(Screen::Palette);
+      else if (y < TOOL_CLEAR_Y) switch_to(Screen::Keyboard);
+      else if (y < TOOL_SEND_Y) {
+        reset_note();
+        show_note();
+      } else {
+        send_note();
+      }
+      break;
+    default: break;
   }
-  if (y < TOOL_ABC_Y) switch_to(Screen::Palette);
-  else if (y < TOOL_CLEAR_Y) switch_to(Screen::Keyboard);
-  else if (y < TOOL_SEND_Y) {
-    kb_len = 0;
-    kb_text[0] = 0;
-    show_canvas(false);
-  }
-  else send_note();
 }
 
 static void poll_touch(uint32_t now) {
@@ -722,18 +1056,14 @@ static void poll_touch(uint32_t now) {
   bool new_touch = !touch_down;
   touch_down = true;
 
-  if (screen != Screen::Draw) {
-    if (new_touch) on_tap(x, y);
-    return;
-  }
-  if (x >= TOOL_X) {
+  if (screen != Screen::Note || x >= TOOL_X || y < HEADER_H) {
     in_stroke = false;
-    if (new_touch && y >= HEADER_H) on_tap(x, y);
+    if (new_touch) on_tap(x, y);
     return;
   }
   if (y < HEADER_H + TAB_H) return;
   if (!in_stroke) {
-    if (!encoder->begin_stroke(x, y)) return;  // canvas full
+    if (!encoder->begin_stroke(x, y)) return;  // note full
     in_stroke = true;
     tft.fillCircle(x, y, 1, PEN_COLORS[pen_color]);
   } else {

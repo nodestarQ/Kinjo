@@ -29,7 +29,9 @@ No soldering needed.
 | T_CS | 27 |
 | SDO (MISO), T_IRQ | not connected |
 
-Buttons go between the pin and GND (`INPUT_PULLUP`): MESSAGES 25, ROOM 32, SEND 33.
+Buttons go between the pin and GND (`INPUT_PULLUP`): HOME 25, POWER 32, BACK 33.
+
+With LED on 3V3 the backlight stays on while the handheld is switched off. Move LED to GPIO 4 to have it go dark too.
 
 Touch calibration (rotation 1): `{ 470, 3255, 371, 2826, 7 }`
 

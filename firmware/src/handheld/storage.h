@@ -57,4 +57,12 @@ inline bool load(kinjo::DeviceState& s) {
   return false;
 }
 
+// Touch calibration from the Calibrate screen. Leaves `cal` as it is if none was saved.
+inline void load_touch(uint16_t cal[5]) {
+  uint16_t saved[5];
+  if (prefs.getBytes("touch", saved, sizeof(saved)) == sizeof(saved)) memcpy(cal, saved, sizeof(saved));
+}
+
+inline void save_touch(const uint16_t cal[5]) { prefs.putBytes("touch", cal, 5 * sizeof(uint16_t)); }
+
 }  // namespace storage
