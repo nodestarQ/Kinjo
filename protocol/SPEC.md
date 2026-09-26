@@ -110,7 +110,7 @@ stroke = point_count (u8, 1 to 255)
          (point_count - 1) x [dx (i8) dy (i8)]
 ```
 
-- If a step is larger than 127 in either axis, end the stroke and start a new one.
+- If a step is larger than 127 in either axis, the encoder adds points in between. A stroke longer than 255 points continues in a new stroke that starts at its last point.
 - Max plaintext: 16 fragments x 232 B minus 29 B overhead.
 
 ## 10. Crypto
@@ -160,6 +160,7 @@ Registration flow: `docs/onboarding.md` (to be written).
 - USB CDC. Baud setting ignored, use 115200.
 - Frames are **COBS**-encoded and end with `0x00`.
 - Decoded frame = `frame_type (1) + body`.
+- Decoders must accept both COBS forms for data ending in a full 254-byte block (with or without a trailing `0x01`).
 
 | Type | Name | Direction | Body |
 |---|---|---|---|
