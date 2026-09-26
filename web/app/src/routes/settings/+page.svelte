@@ -4,6 +4,7 @@
 	import Card from '$lib/components/Card.svelte';
 	import IdentityPanel from '$lib/components/IdentityPanel.svelte';
 	import RequireSignIn from '$lib/components/RequireSignIn.svelte';
+	import WorldVerify from '$lib/components/WorldVerify.svelte';
 	import { app } from '$lib/kinjo/state.svelte';
 
 	let releaseLabel = $state('');
@@ -23,19 +24,7 @@
 	<div class="grid gap-6 lg:grid-cols-2">
 		<div class="space-y-6">
 			<Card title="Verified human (World ID)">
-				{#if app.owner?.verifiedHuman}
-					<p class="text-sm">
-						<span class="rounded bg-blue-100 px-1.5 text-blue-800">verified human</span>
-						Your badge is <b>{app.owner.label}.verified.kinjo.eth</b>.
-					</p>
-				{:else}
-					<p class="text-sm text-frame-dark">
-						Prove you're a unique human with World ID. Kinjo then registers <b>{app.owner?.label}.verified.kinjo.eth</b> for you,
-						and others can filter for verified people. Optional.
-					</p>
-					<button class="btn mt-3" disabled>Verify with World ID</button>
-					<p class="mt-1 text-xs text-frame-dark">Not set up on this deployment yet.</p>
-				{/if}
+				<WorldVerify />
 			</Card>
 
 			<Card title="Account">
