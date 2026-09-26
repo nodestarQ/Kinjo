@@ -3,7 +3,7 @@
 </script>
 
 {#if app.portChoice}
-	<div class="fixed inset-0 z-10 flex items-center justify-center bg-black/30">
+	<div class="fixed inset-0 z-10 flex items-center justify-center bg-black/30 p-3">
 		<div class="w-full max-w-md rounded-lg bg-white p-4 shadow-lg">
 			<h2 class="mb-2 font-semibold">Pick a serial port</h2>
 			<ul class="space-y-1">

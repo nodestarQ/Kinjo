@@ -97,10 +97,11 @@
 			{/each}
 		</ul>
 	</div>
-	<div class="mt-3 flex items-stretch">
-		<span class="tab flex items-center" style="background:{tabColor(app.name || 'this laptop')}">{shortName(app.name) || 'you'}</span>
-		<div class="flex flex-1 items-center gap-2 rounded-r-sm border-2 border-l-0 bg-paper px-2 py-1" style="border-color:{tabColor(app.name || 'this laptop')}">
-			<select class="input py-0" bind:value={to}>
+	<!-- Phones: name tab above the composer, recipient on its own row. -->
+	<div class="mt-3 flex flex-col items-stretch sm:flex-row">
+		<span class="tab flex items-center self-start rounded-b-none sm:self-stretch sm:rounded-l-sm sm:rounded-r-none" style="background:{tabColor(app.name || 'this laptop')}">{shortName(app.name) || 'you'}</span>
+		<div class="flex flex-1 flex-wrap items-center gap-2 rounded-sm rounded-tl-none border-2 bg-paper px-2 py-1 sm:flex-nowrap sm:rounded-l-none sm:border-l-0" style="border-color:{tabColor(app.name || 'this laptop')}">
+			<select class="input w-full py-0 sm:w-auto" bind:value={to}>
 				<option value="">to…</option>
 				{#each app.contacts.filter((c) => !c.revoked) as c (c.name)}<option value={c.name}>{shortName(c.name)}</option>{/each}
 			</select>
