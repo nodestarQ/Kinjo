@@ -73,7 +73,8 @@ contract Deploy is Script, KinjoSetup {
         // Set KINJO_SALT to a new value (e.g. 10, 20) for a second deploy by the same wallet.
         uint256 salt = vm.envOr("KINJO_SALT", uint256(1));
         vm.startBroadcast();
-        Deployment memory d = _setUpKinjo(msg.sender, salt);
+        (, address team,) = vm.readCallers(); // the wallet that signs (--account or --sender)
+        Deployment memory d = _setUpKinjo(team, salt);
         vm.stopBroadcast();
         console.log("kinjo.eth registry:   ", address(d.kinjoRegistry));
         console.log("verified.kinjo.eth registry:", address(d.verifiedRegistry));
