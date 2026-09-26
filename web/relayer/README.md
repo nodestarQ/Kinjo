@@ -19,7 +19,7 @@ Needs Node 22.18 or newer (it runs the TypeScript directly) and `pnpm install` i
 | `KINJO_ONBOARDING` | contract address (required) |
 | `RELAYER_PRIVATE_KEY` | key of the `kinjo.eth` wallet, only in the server's env file |
 | `KINJO_RPC_URL` | default: public Sepolia RPC |
-| `ALLOWED_ORIGIN` | the web app's URL (default `*`) |
+| `ALLOWED_ORIGIN` | web app origins, comma-separated (default `*`) |
 | `PORT` | default `8787` |
 
 ```sh

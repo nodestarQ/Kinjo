@@ -27,6 +27,7 @@ export interface Config {
 	privateKey?: Hex;
 	team?: Address;
 	chainId: number;
+	/** Comma-separated origins allowed to call /relay from a browser, or "*". */
 	allowedOrigin: string;
 	/** Requests per owner per window. */
 	rateLimit: number;
@@ -147,7 +148,11 @@ async function serveStatic(dir: string, url: string, res: ServerResponse) {
 export function startServer(config: Config, port: number) {
 	const relayer = createRelayer(config);
 	const server = createServer(async (req: IncomingMessage, res: ServerResponse) => {
-		res.setHeader('Access-Control-Allow-Origin', config.allowedOrigin);
+		const origins = config.allowedOrigin.split(',').map((o) => o.trim());
+		const origin = req.headers.origin ?? '';
+		if (origins.includes('*')) res.setHeader('Access-Control-Allow-Origin', '*');
+		else if (origins.includes(origin)) res.setHeader('Access-Control-Allow-Origin', origin);
+		res.setHeader('Vary', 'Origin');
 		res.setHeader('Access-Control-Allow-Headers', 'content-type');
 		const send = (status: number, data: object) =>
 			res.setHeader('Content-Type', 'application/json').writeHead(status).end(JSON.stringify(data));
