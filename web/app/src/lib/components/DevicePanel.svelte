@@ -47,21 +47,21 @@
 
 <Card title="Handheld over USB">
 	{#if !app.device}
-		<p class="text-sm text-neutral-600">Plug in the handheld and pick its port.</p>
+		<p class="text-sm text-frame-dark">Plug in the handheld and pick its port.</p>
 		<button class="btn mt-3" disabled={busy} onclick={connect}>Connect device</button>
 	{:else}
 		<dl class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">
-			<dt class="text-neutral-500">Name</dt>
+			<dt class="text-frame-dark">Name</dt>
 			<dd>{app.device.name || '(none yet)'}</dd>
-			<dt class="text-neutral-500">Public key</dt>
+			<dt class="text-frame-dark">Public key</dt>
 			<dd><code class="break-all text-xs">0x{bytesToHex(app.device.pub)}</code></dd>
-			<dt class="text-neutral-500">Contacts</dt>
+			<dt class="text-frame-dark">Contacts</dt>
 			<dd>{app.device.contacts}</dd>
 		</dl>
 
-		<p class="mt-3 text-xs text-neutral-500">Register it under your name (card "Your name in ENS") and it gets its name and contacts automatically.</p>
+		<p class="mt-3 text-xs text-frame-dark">Register it under your name (card "Your name in ENS") and it gets its name and contacts automatically.</p>
 		<details class="mt-2 text-sm">
-			<summary class="cursor-pointer text-neutral-600">Set the name by hand</summary>
+			<summary class="cursor-pointer text-frame-dark">Set the name by hand</summary>
 			<div class="mt-2 flex gap-2">
 				<input id="device-name" class="input flex-1" bind:value={deviceName} placeholder="handheld.alice.kinjo.eth" />
 				<button class="btn" disabled={busy} onclick={saveName}>Save</button>
@@ -77,6 +77,6 @@
 
 	{#if error}<p class="mt-3 text-sm text-red-600">{error}</p>{/if}
 	{#if app.deviceLog.length}
-		<pre class="mt-3 max-h-32 overflow-auto rounded bg-neutral-100 p-2 text-xs">{app.deviceLog.join('\n')}</pre>
+		<pre class="mt-3 max-h-32 overflow-auto rounded bg-console p-2 text-xs">{app.deviceLog.join('\n')}</pre>
 	{/if}
 </Card>

@@ -40,13 +40,13 @@
 
 <Card title="Your name in ENS">
 	{#if !app.owner}
-		<p class="text-sm text-neutral-600">
+		<p class="text-sm text-frame-dark">
 			Connect a wallet to claim a free name under <b>kinjo.eth</b> and register devices.
 			{sponsored ? 'You only sign messages, no Sepolia ETH needed.' : 'You pay the gas yourself.'}
 		</p>
 		<button class="btn mt-3" onclick={() => run(() => app.connectWallet())}>Connect wallet</button>
 	{:else}
-		<p class="text-sm text-neutral-600">
+		<p class="text-sm text-frame-dark">
 			Wallet {short(app.owner.address)}
 			{#if app.owner.label}
 				· <b>{app.owner.label}.kinjo.eth</b>
@@ -58,23 +58,23 @@
 			<label class="flex items-center gap-1 text-sm"><input type="radio" bind:group={useLaptop} value={false} /> the handheld on USB</label>
 			<label class="flex items-center gap-1 text-sm"><input type="radio" bind:group={useLaptop} value={true} /> this laptop (web app)</label>
 		</div>
-		<label class="mt-2 block text-sm text-neutral-600" for="device-label">Device name</label>
+		<label class="mt-2 block text-sm text-frame-dark" for="device-label">Device name</label>
 		<input id="device-label" class="input w-full" bind:value={deviceLabel} placeholder="handheld" />
 
 		{#if !app.owner.label}
-			<label class="mt-3 block text-sm text-neutral-600" for="owner-label">Your name</label>
+			<label class="mt-3 block text-sm text-frame-dark" for="owner-label">Your name</label>
 			<div class="flex items-center gap-1">
 				<input id="owner-label" class="input flex-1" bind:value={label} placeholder="alice" />
-				<span class="text-sm text-neutral-500">.kinjo.eth</span>
+				<span class="text-sm text-frame-dark">.kinjo.eth</span>
 			</div>
-			<p class="mt-1 text-xs text-neutral-500">
+			<p class="mt-1 text-xs text-frame-dark">
 				Becomes <b>{deviceOk ? deviceLabel : '…'}.{labelOk ? label : '…'}.kinjo.eth</b>. Lowercase a-z, 0-9 and "-".
 			</p>
 			<button class="btn mt-3" disabled={!labelOk || !deviceOk || !!app.busy} onclick={() => run(() => app.join(label, deviceLabel, useLaptop))}>
 				Join
 			</button>
 		{:else}
-			<p class="mt-1 text-xs text-neutral-500">Becomes <b>{deviceOk ? deviceLabel : '…'}.{app.owner.label}.kinjo.eth</b>.</p>
+			<p class="mt-1 text-xs text-frame-dark">Becomes <b>{deviceOk ? deviceLabel : '…'}.{app.owner.label}.kinjo.eth</b>.</p>
 			<button class="btn mt-3" disabled={!deviceOk || !!app.busy} onclick={() => run(() => app.addDevice(deviceLabel, useLaptop))}>
 				Register device
 			</button>
@@ -102,7 +102,7 @@
 
 		{#if app.isTeam}
 			<details class="mt-4 text-sm">
-				<summary class="cursor-pointer text-neutral-600">Team: release a name</summary>
+				<summary class="cursor-pointer text-frame-dark">Team: release a name</summary>
 				<div class="mt-2 flex gap-2">
 					<input class="input flex-1" bind:value={releaseLabel} placeholder="alice" />
 					<button class="btn-danger" disabled={!!app.busy} onclick={() => run(() => app.release(releaseLabel.trim()))}>Release</button>

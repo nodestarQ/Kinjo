@@ -33,8 +33,8 @@ class AppState {
 	device = $state<DeviceInfo | null>(null);
 	deviceLog = $state<string[]>([]);
 	owner = $state<Owner | null>(null);
-	/** What the last ENS syncs changed, newest first. */
-	notices = $state<string[]>([]);
+	/** System lines for the chat: registrations, revocations, key changes. */
+	notices = $state<{ at: number; text: string }[]>([]);
 	busy = $state('');
 	/** Open port picker (serial helper mode). */
 	portChoice = $state<{ ports: HelperPort[]; resolve: (path: string | null) => void } | null>(null);
@@ -143,8 +143,9 @@ class AppState {
 		}
 	}
 
-	private notice(line: string) {
-		this.pushLog(this.notices, `${new Date().toLocaleTimeString()} ${line}`);
+	private notice(text: string) {
+		this.notices.push({ at: Date.now(), text });
+		if (this.notices.length > MAX_LOG) this.notices.shift();
 	}
 
 	async connectWallet() {

@@ -1,16 +1,56 @@
 @import 'tailwindcss';
 
+/* Handheld-chat look: light grey console, blue-grey frames, white lined paper, pixel font. */
+@theme {
+	--font-pixel: 'DotGothic16', ui-monospace, monospace;
+	--color-console: #e9edf1;
+	--color-frame: #8ea0b3;
+	--color-frame-dark: #5f7286;
+	--color-paper: #fcfdfe;
+	--color-rule: #d7e2ec;
+	--color-ink: #26313d;
+	--color-accent: #3d6fd6;
+}
+
+@layer base {
+	body {
+		@apply bg-console font-pixel text-ink;
+		background-image: radial-gradient(#dfe4ea 1px, transparent 1px);
+		background-size: 6px 6px;
+	}
+}
+
 @layer components {
+	.panel {
+		@apply rounded-md border-2 border-frame bg-paper shadow-[3px_3px_0_0_var(--color-frame)];
+	}
+	.panel-title {
+		@apply flex items-center gap-2 border-b-2 border-frame bg-frame px-3 py-1 text-sm tracking-wide text-white;
+	}
+	/* Ruled notepad lines, 22 px apart. */
+	.paper {
+		background-color: var(--color-paper);
+		background-image: repeating-linear-gradient(
+			to bottom,
+			transparent 0,
+			transparent 21px,
+			var(--color-rule) 21px,
+			var(--color-rule) 22px
+		);
+	}
+	.tab {
+		@apply shrink-0 rounded-l-sm px-2 py-0.5 text-xs text-white;
+	}
 	.btn {
-		@apply rounded bg-neutral-900 px-3 py-1.5 text-sm text-white hover:bg-neutral-700 disabled:opacity-40;
+		@apply rounded-sm border-2 border-frame-dark bg-accent px-3 py-1 text-sm text-white shadow-[2px_2px_0_0_var(--color-frame-dark)] active:translate-x-px active:translate-y-px active:shadow-none disabled:opacity-40;
 	}
 	.btn-secondary {
-		@apply rounded border border-neutral-300 px-3 py-1.5 text-sm hover:bg-neutral-100 disabled:opacity-40;
+		@apply rounded-sm border-2 border-frame bg-white px-3 py-1 text-sm shadow-[2px_2px_0_0_var(--color-frame)] hover:bg-console active:translate-x-px active:translate-y-px active:shadow-none disabled:opacity-40;
 	}
 	.btn-danger {
-		@apply rounded border border-red-300 px-3 py-1.5 text-sm text-red-700 hover:bg-red-50 disabled:opacity-40;
+		@apply rounded-sm border-2 border-red-400 bg-white px-3 py-1 text-sm text-red-700 shadow-[2px_2px_0_0_theme(--color-red-400)] hover:bg-red-50 active:translate-x-px active:translate-y-px active:shadow-none disabled:opacity-40;
 	}
 	.input {
-		@apply rounded border border-neutral-300 px-2 py-1.5 text-sm;
+		@apply rounded-sm border-2 border-frame bg-white px-2 py-1 text-sm outline-none focus:border-accent;
 	}
 }

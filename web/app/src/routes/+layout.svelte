@@ -10,6 +10,6 @@
 	<title>Kinjo</title>
 </svelte:head>
 
-<div class="min-h-screen bg-neutral-50 text-neutral-900">
+<div class="min-h-screen">
 	{@render children()}
 </div>
