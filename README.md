@@ -35,6 +35,12 @@ docs/        design notes and hardware
 
 _Coming soon._
 
+## Tests
+
+| What | Run | Details |
+|---|---|---|
+| Protocol reference, test vectors | `cd protocol/reference && .venv/bin/python -m unittest` | [protocol/reference](protocol/reference/README.md) |
+
 ## Team
 
 _Coming soon._
