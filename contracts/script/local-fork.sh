@@ -4,7 +4,8 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-RPC=${SEPOLIA_RPC_URL:-https://ethereum-sepolia-rpc.publicnode.com}
+# Needs an RPC that keeps old state: the fork reads Sepolia as of its start block for hours.
+RPC=${SEPOLIA_RPC_URL:-https://sepolia.gateway.tenderly.co}
 TEAM=0x281770ab3731C474a7F7ab00FfE0A4A92Bf6aCaD
 LOCAL=http://127.0.0.1:8545
 
