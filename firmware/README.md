@@ -57,13 +57,13 @@ TFT_eSPI **2.5.43** takes its pins from `User_Setup.h` in the library folder (`~
 
 ## Handheld controls
 
-| Button | Messages screen | Draw screen |
+| Button | Messages screen | Note screen |
 |---|---|---|
-| MESSAGES (GPIO 25) | open the draw screen | back to messages |
+| MESSAGES (GPIO 25) | open the note | back to messages |
 | ROOM (GPIO 32) | next contact as recipient | next contact as recipient |
-| SEND (GPIO 33) | send "gm" | send the drawing |
+| SEND (GPIO 33) | send "gm" | send the note |
 
-Draw with a stylus or fingernail. A received drawing opens on the draw screen. Senders with a World ID badge show in green.
+The draw screen is a note: the toolbar at the right edge has the pen color (tap it for the palette screen), ABC (keyboard, the text goes onto the note), CLR and SEND. SEND sends what is on the note: text, drawing or both as one message. On the keyboard, SHIFT capitalizes the next letter and DONE goes back to the note. Draw with a stylus or fingernail. In the chat your own messages are on the left and other devices on the right, each device in its own color (same as in the web app). Tap a drawing to see it full screen. The X closes it.
 
 ## Set the MACs
 
