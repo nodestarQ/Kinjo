@@ -2,6 +2,7 @@
 	import DevicePanel from '$lib/components/DevicePanel.svelte';
 	import IdentityPanel from '$lib/components/IdentityPanel.svelte';
 	import MeshPanel from '$lib/components/MeshPanel.svelte';
+	import OwnerPanel from '$lib/components/OwnerPanel.svelte';
 	import { serialSupported } from '$lib/kinjo/serial';
 </script>
 
@@ -17,8 +18,9 @@
 
 	<div class="mt-6 grid gap-6 lg:grid-cols-2">
 		<div class="space-y-6">
-			<IdentityPanel />
+			<OwnerPanel />
 			<DevicePanel />
+			<IdentityPanel />
 		</div>
 		<MeshPanel />
 	</div>

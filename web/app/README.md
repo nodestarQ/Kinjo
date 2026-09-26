@@ -4,6 +4,7 @@ Onboarding (ENS names, device setup over USB) and the laptop node (talks to the 
 
 ```sh
 cd web/app
+cp .env.example .env   # set the contract and relayer addresses
 pnpm install
 pnpm dev      # http://localhost:5173
 pnpm test     # protocol tests; ENS tests too if the local fork runs (see below)

@@ -34,24 +34,8 @@
 			await refresh();
 		});
 
-	/** Pushes this laptop and every contact to the handheld. */
-	const pushContacts = () =>
-		run(async () => {
-			if (!app.name) throw new Error('give this laptop a name first');
-			await app.deviceLink.clearContacts();
-			await app.deviceLink.addContact(app.name, app.node.pub, false);
-			for (const c of app.contacts) {
-				if (c.name !== app.device?.name && !c.revoked) await app.deviceLink.addContact(c.name, c.pub, !!c.verifiedHuman);
-			}
-			await refresh();
-		});
-
-	/** Lets this laptop open the handheld's messages (until ENS provides the key). */
-	const trustDevice = () =>
-		run(async () => {
-			if (!app.device?.name) throw new Error('name the device first');
-			app.upsertContact({ name: app.device.name, pub: app.device.pub });
-		});
+	/** Pushes this laptop and every ENS contact to the handheld. */
+	const pushContacts = () => run(() => app.pushContactsToDevice());
 
 	const wipe = () =>
 		run(async () => {
@@ -75,15 +59,17 @@
 			<dd>{app.device.contacts}</dd>
 		</dl>
 
-		<label class="mt-4 block text-sm text-neutral-600" for="device-name">Device ENS name</label>
-		<div class="mt-1 flex gap-2">
-			<input id="device-name" class="input flex-1" bind:value={deviceName} placeholder="handheld.alice.kinjo.eth" />
-			<button class="btn" disabled={busy} onclick={saveName}>Save</button>
-		</div>
+		<p class="mt-3 text-xs text-neutral-500">Register it under your name (card "Your name in ENS") and it gets its name and contacts automatically.</p>
+		<details class="mt-2 text-sm">
+			<summary class="cursor-pointer text-neutral-600">Set the name by hand</summary>
+			<div class="mt-2 flex gap-2">
+				<input id="device-name" class="input flex-1" bind:value={deviceName} placeholder="handheld.alice.kinjo.eth" />
+				<button class="btn" disabled={busy} onclick={saveName}>Save</button>
+			</div>
+		</details>
 
 		<div class="mt-4 flex flex-wrap gap-2">
 			<button class="btn" disabled={busy} onclick={pushContacts}>Push contacts</button>
-			<button class="btn-secondary" disabled={busy} onclick={trustDevice}>Add to this laptop's contacts</button>
 			<button class="btn-danger" disabled={busy} onclick={wipe}>Wipe device</button>
 			<button class="btn-secondary" onclick={() => app.deviceLink.disconnect()}>Disconnect</button>
 		</div>

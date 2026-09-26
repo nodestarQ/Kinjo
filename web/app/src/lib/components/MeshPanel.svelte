@@ -11,6 +11,7 @@
 	let text = $state('');
 	let newName = $state('');
 	let newPub = $state('');
+	let ensName = $state('');
 
 	const statusClass: Record<MessageStatus, string> = {
 		verified: 'bg-green-100 text-green-800',
@@ -42,6 +43,12 @@
 			if (pub.length !== 32 || !newName.trim()) throw new Error('need a name and a 32-byte key');
 			app.upsertContact({ name: newName.trim(), pub });
 			newName = newPub = '';
+		});
+
+	const addByEns = () =>
+		run(async () => {
+			await app.addContactByName(ensName);
+			ensName = '';
 		});
 
 	const time = (t: number) => new Date(t).toLocaleTimeString();
@@ -84,7 +91,15 @@
 		<button class="btn" disabled={!app.bridgeConnected} onclick={send}>Send</button>
 	</div>
 
-	<h3 class="mt-5 font-medium">Contacts</h3>
+	<div class="mt-5 flex items-center">
+		<h3 class="font-medium">Contacts</h3>
+		<button class="btn-secondary ml-auto" onclick={() => run(() => app.syncEns())}>Sync ENS</button>
+	</div>
+	<p class="text-xs text-neutral-500">Keys come from ENS and are checked again every 10 s.</p>
+	<div class="mt-2 flex gap-2">
+		<input class="input flex-1" bind:value={ensName} placeholder="handheld.bob.kinjo.eth" onkeydown={(e) => e.key === 'Enter' && addByEns()} />
+		<button class="btn" onclick={addByEns}>Add</button>
+	</div>
 	<ul class="mt-2 space-y-1 text-sm">
 		{#each app.contacts as c (c.name)}
 			<li class="flex items-center gap-2">
@@ -98,7 +113,7 @@
 		{/each}
 	</ul>
 	<details class="mt-2 text-sm">
-		<summary class="cursor-pointer text-neutral-600">Add a contact by key</summary>
+		<summary class="cursor-pointer text-neutral-600">Add a contact by key (without ENS)</summary>
 		<div class="mt-2 flex flex-col gap-2">
 			<input class="input" bind:value={newName} placeholder="handheld.bob.kinjo.eth" />
 			<input class="input" bind:value={newPub} placeholder="0x… public key" />
@@ -107,6 +122,11 @@
 	</details>
 
 	{#if error}<p class="mt-3 text-sm text-red-600">{error}</p>{/if}
+	{#if app.notices.length}
+		<ul class="mt-3 space-y-0.5 rounded bg-neutral-100 p-2 text-xs">
+			{#each app.notices as n, i (i)}<li>{n}</li>{/each}
+		</ul>
+	{/if}
 
 	<h3 class="mt-5 font-medium">Packets seen by the bridge</h3>
 	<p class="text-xs text-neutral-500">What any relay sees: headers and ciphertext.</p>
