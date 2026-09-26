@@ -1,4 +1,5 @@
 # On the server: cp .env.example .env, fill it in, then: docker compose up -d --build
+name: kinjo # own project name, next to other compose projects on the same server
 services:
   kinjo:
     build:
