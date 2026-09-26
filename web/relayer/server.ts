@@ -126,10 +126,14 @@ export function startServer(config: Config, port: number) {
 			return send(200, { ok: true, relayer: relayer.address, onboarding: config.onboarding, chainId: config.chainId });
 		}
 		if (req.method === 'POST' && req.url === '/relay') {
+			let body: RelayRequest | undefined;
 			try {
-				const hash = await relayer.relay((await readJson(req)) as RelayRequest);
+				body = (await readJson(req)) as RelayRequest;
+				const hash = await relayer.relay(body);
+				console.log(`relayed ${body.action} for ${body.owner}: ${hash}`);
 				return send(200, { hash });
 			} catch (e) {
+				console.log(`rejected ${body?.action ?? '?'} for ${body?.owner ?? '?'}: ${(e as Error).message}`);
 				return send(400, { error: (e as Error).message });
 			}
 		}
