@@ -19,7 +19,15 @@ export const onboardingAbi = parseAbi([
 	'error InvalidLabel()',
 	'error InvalidSignature()',
 	'error Expired()',
-	'error WrongFee()'
+	'error WrongFee()',
+	'event DeviceAdded(address indexed owner, string deviceLabel, bytes32 deviceKey)',
+	'event DeviceRevoked(address indexed owner, string deviceLabel)',
+	// ENSv2 registry errors that surface through KinjoOnboarding
+	'error LabelAlreadyRegistered(string label)',
+	'error LabelAlreadyReserved(string label)',
+	'error LabelExpired(uint256 tokenId)',
+	'error EACUnauthorizedAccountRoles(uint256 resource, uint256 roleBitmap, address account)',
+	'error ERC1155InvalidReceiver(address receiver)'
 ]);
 
 export const eip712Types = {

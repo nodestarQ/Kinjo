@@ -38,6 +38,8 @@ export interface EnsConfig {
 	onboarding: Address;
 	/** Empty: owners pay their own gas. */
 	relayerUrl: string;
+	/** Block the contract was deployed in: device events are read from here on. */
+	deployBlock?: bigint;
 }
 
 /** `handheld.alice.kinjo.eth` → `alice`. Null if the name isn't under kinjo.eth. */
@@ -116,6 +118,25 @@ export function createEns(config: EnsConfig) {
 		return registry === '0x0000000000000000000000000000000000000000' ? null : { registry, resolver, label, verifiedHuman: human };
 	}
 
+	/** The owner's current device labels, from the contract's DeviceAdded and DeviceRevoked events. */
+	async function devicesOf(owner: Address): Promise<string[]> {
+		const common = { address: config.onboarding, args: { owner }, fromBlock: config.deployBlock ?? 0n, toBlock: 'latest' } as const;
+		const [added, revoked] = await Promise.all([
+			client.getContractEvents({ ...common, abi: onboardingAbi, eventName: 'DeviceAdded' }),
+			client.getContractEvents({ ...common, abi: onboardingAbi, eventName: 'DeviceRevoked' })
+		]);
+		const events = [...added.map((e) => ({ e, on: true })), ...revoked.map((e) => ({ e, on: false }))].sort(
+			(a, b) => Number(a.e.blockNumber - b.e.blockNumber) || a.e.logIndex - b.e.logIndex
+		);
+		const active = new Set<string>();
+		for (const { e, on } of events) {
+			const label = (e.args as { deviceLabel: string }).deviceLabel;
+			if (on) active.add(label);
+			else active.delete(label);
+		}
+		return [...active];
+	}
+
 	async function labelFree(label: string): Promise<boolean> {
 		if (label === 'verified') return false;
 		const owner = await client.readContract({
@@ -173,30 +194,47 @@ export function createEns(config: EnsConfig) {
 
 	/** Signs and relays if a relayer is set, else the owner pays. Waits for the receipt. */
 	async function submit(wallet: WalletClient, request: UnsignedRequest): Promise<Hex> {
+		await ensureChain(wallet);
 		const hash = config.relayerUrl ? await relay(await sign(wallet, request)) : await direct(wallet, request);
 		const receipt = await client.waitForTransactionReceipt({ hash });
 		if (receipt.status !== 'success') throw new Error('transaction failed');
 		return hash;
 	}
 
-	/** Connects the browser wallet (MetaMask etc.) and switches it to our chain. */
-	async function connectWallet(): Promise<{ wallet: WalletClient; address: Address }> {
-		const provider = (globalThis as { ethereum?: EIP1193Provider }).ethereum;
-		if (!provider) throw new Error('no browser wallet found');
-		const wallet = createWalletClient({ chain, transport: custom(provider) });
-		const [address] = await wallet.requestAddresses();
+	const provider = () => (globalThis as { ethereum?: EIP1193Provider }).ethereum;
+
+	async function ensureChain(wallet: WalletClient) {
+		if ((await wallet.getChainId()) === chain.id) return;
 		try {
 			await wallet.switchChain({ id: chain.id });
 		} catch {
 			await wallet.addChain({ chain });
 			await wallet.switchChain({ id: chain.id });
 		}
+	}
+
+	/** Connects the browser wallet (MetaMask etc.) and switches it to our chain. */
+	async function connectWallet(): Promise<{ wallet: WalletClient; address: Address }> {
+		const p = provider();
+		if (!p) throw new Error('no browser wallet found');
+		const wallet = createWalletClient({ chain, transport: custom(p) });
+		const [address] = await wallet.requestAddresses();
+		await ensureChain(wallet);
 		return { wallet, address };
+	}
+
+	/** The account the wallet already allowed this site, without a popup. Null if none. */
+	async function restoreWallet(): Promise<{ wallet: WalletClient; address: Address } | null> {
+		const p = provider();
+		if (!p) return null;
+		const wallet = createWalletClient({ chain, transport: custom(p) });
+		const [address] = await wallet.getAddresses();
+		return address ? { wallet, address } : null;
 	}
 
 	const deadline = () => String(Math.floor(Date.now() / 1000) + 600);
 
-	return { client, chain, deviceKey, verifiedHuman, resolveContact, sync, account, labelFree, sign, relay, direct, submit, connectWallet, deadline };
+	return { client, chain, deviceKey, verifiedHuman, resolveContact, sync, account, labelFree, sign, relay, direct, submit, connectWallet, restoreWallet, devicesOf, deadline };
 }
 
 export type Ens = ReturnType<typeof createEns>;

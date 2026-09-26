@@ -2,6 +2,7 @@
 
 import {
 	PUBLIC_KINJO_CHAIN_ID,
+	PUBLIC_KINJO_DEPLOY_BLOCK,
 	PUBLIC_KINJO_ONBOARDING,
 	PUBLIC_KINJO_RPC_URL,
 	PUBLIC_KINJO_TEAM,
@@ -16,7 +17,8 @@ export const ensConfig: EnsConfig = {
 	chainId: Number(PUBLIC_KINJO_CHAIN_ID),
 	rpcUrl: PUBLIC_KINJO_RPC_URL,
 	onboarding: PUBLIC_KINJO_ONBOARDING as Address,
-	relayerUrl: PUBLIC_RELAYER_URL.replace(/\/$/, '')
+	relayerUrl: PUBLIC_RELAYER_URL.replace(/\/$/, ''),
+	deployBlock: BigInt(PUBLIC_KINJO_DEPLOY_BLOCK || '0')
 };
 
 export const teamAddress = PUBLIC_KINJO_TEAM.toLowerCase();
