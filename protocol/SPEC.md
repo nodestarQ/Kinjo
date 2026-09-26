@@ -37,7 +37,7 @@ The laptop node is an endpoint. The radio bridge under it is just a modem.
 | ESP-NOW encryption | off (Kinjo encrypts end to end) |
 | Max frame | 250 B |
 
-Each node has a compile-time peer list (`firmware/lib/kinjo/topology.h`). This forces the demo route:
+Each node has a compile-time peer list. This forces the demo route:
 
 | Node | Peers |
 |---|---|
