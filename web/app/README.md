@@ -17,7 +17,7 @@ pnpm build    # static files in build/
 | `src/lib/kinjo/ens.ts` | device keys and badges from ENS, sync (revoked, new key), wallet, signing, relayer |
 | `src/lib/kinjo/onboarding.ts` | contract ABI and EIP-712 requests, shared with `web/relayer` |
 | `src/lib/kinjo/mesh.ts` | the laptop node: opens and seals messages |
-| `src/routes` | `/` sign in and sign up, `/chat`, `/devices`, `/settings` |
+| `src/routes` | `/` sign in and sign up, `/chat` (chat list, `?with=<name>` opens one), `/devices`, `/settings` |
 | `src/service-worker.ts` | offline copy of the app (PWA). ENS and relayer calls always go to the network |
 
 If the browser's Web Serial drops the boards ("The device has been lost", seen with Chrome on Linux), use the local serial helper instead:

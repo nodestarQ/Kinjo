@@ -39,6 +39,8 @@ class AppState {
 	notices = $state<{ at: number; text: string }[]>([]);
 	/** Full ENS names of the owner's registered devices, read from the chain. */
 	myDevices = $state<string[]>([]);
+	/** When each chat was last looked at, for unread counts. Keyed by contact name. */
+	readAt = $state<Record<string, number>>({});
 	busy = $state('');
 	/** Open port picker (serial helper mode). */
 	portChoice = $state<{ ports: HelperPort[]; resolve: (path: string | null) => void } | null>(null);
@@ -131,6 +133,16 @@ class AppState {
 	private pushLog(log: string[], line: string) {
 		log.unshift(line);
 		if (log.length > MAX_LOG) log.pop();
+	}
+
+	/** Incoming messages in the chat with `name` that came in after it was last open. */
+	unread(name: string): number {
+		const since = this.readAt[name] ?? 0;
+		return this.messages.filter((m) => !m.outgoing && m.from === name && m.at > since).length;
+	}
+
+	markRead(name: string) {
+		this.readAt[name] = Date.now();
 	}
 
 	setName(name: string) {

@@ -20,7 +20,6 @@
 		class="min-h-9 w-[85%] rounded-sm border-2 bg-paper px-2 py-1.5 {m.outgoing ? 'rounded-tl-none' : 'rounded-tr-none'}"
 		style="border-color:{color}"
 	>
-		{#if m.outgoing}<span class="text-xs text-frame-dark">to {shortName(m.from)} · </span>{/if}
 		{#if rejected}
 			<span class="text-sm text-red-700">{m.status === 'revoked' ? 'REVOKED in ENS' : m.status}: message rejected</span>
 		{:else}

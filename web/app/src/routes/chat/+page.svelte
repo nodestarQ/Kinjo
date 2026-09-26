@@ -1,7 +1,9 @@
 <script lang="ts">
 	import { dev } from '$app/environment';
+	import { page } from '$app/state';
 
-	import MeshPanel from '$lib/components/MeshPanel.svelte';
+	import ContactList from '$lib/components/ContactList.svelte';
+	import Conversation from '$lib/components/Conversation.svelte';
 	import RequireSignIn from '$lib/components/RequireSignIn.svelte';
 	import { app } from '$lib/kinjo/state.svelte';
 
@@ -22,6 +24,14 @@
 	{#if !app.name}
 		<p class="panel p-4 text-sm">This browser isn't a registered device yet. <a class="text-accent underline" href="/devices">Register it on the Devices page</a>.</p>
 	{:else}
-		<div class="mx-auto max-w-3xl"><MeshPanel /></div>
+		<!-- /chat lists the chats, /chat?with=<ens name> opens one. -->
+		{@const other = page.url.searchParams.get('with')}
+		<div class="mx-auto max-w-3xl">
+			{#if other}
+				{#key other}<Conversation name={other} />{/key}
+			{:else}
+				<ContactList />
+			{/if}
+		</div>
 	{/if}
 </RequireSignIn>
