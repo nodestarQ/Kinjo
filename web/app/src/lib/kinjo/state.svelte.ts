@@ -1,7 +1,7 @@
 // App state shared by the pages: the laptop node, the bridge link and the handheld link.
 
 import { bytesToHex } from '@noble/hashes/utils.js';
-import type { Address, WalletClient } from 'viem';
+import type { Address, Hex, WalletClient } from 'viem';
 
 import { ensConfig, serialHelperUrl, teamAddress } from './config';
 import { DeviceLink } from './device';
@@ -219,6 +219,16 @@ class AppState {
 		this.owner = { address, label: account?.label ?? null, verifiedHuman: account?.verifiedHuman ?? false };
 		saveOwner(this.owner);
 		await this.refreshDevices().catch(() => {});
+	}
+
+	/** After the relayer registered the World ID badge: waits for the tx and reloads the owner. */
+	async afterBadge(hash?: Hex) {
+		if (hash) await this.ens.client.waitForTransactionReceipt({ hash });
+		if (this.owner) await this.refreshOwner(this.owner.address);
+		this.notice(`${this.owner?.label}.verified.kinjo.eth registered (World ID)`);
+		// Contacts carry the badge. A plugged-in handheld gets it right away, others at their next sync.
+		await this.syncEns().catch(() => {});
+		if (this.device) await this.syncDevice().catch(() => {});
 	}
 
 	/** Reads the owner's devices from the chain and makes sure the chat knows each of them. */
