@@ -3,9 +3,11 @@
 
 	import Card from './Card.svelte';
 	import ChatLine from './ChatLine.svelte';
+	import DrawPad from './DrawPad.svelte';
 	import { app } from '$lib/kinjo/state.svelte';
 	import { shortName, tabColor } from '$lib/kinjo/tabs';
 	import type { Message } from '$lib/kinjo/mesh';
+	import type { ColoredStroke } from '$lib/kinjo/protocol';
 
 	let error = $state('');
 	let to = $state('');
@@ -13,6 +15,8 @@
 	let newName = $state('');
 	let newPub = $state('');
 	let ensName = $state('');
+	let drawOpen = $state(false);
+	let strokes = $state<ColoredStroke[]>([]);
 
 	// One timeline: messages and system lines, oldest first like a chat.
 	type Entry = { at: number; key: string } & ({ message: Message } | { notice: string });
@@ -42,8 +46,10 @@
 		run(async () => {
 			const contact = app.contacts.find((c) => c.name === to);
 			if (!contact) throw new Error('pick a contact');
-			await app.sendText(contact, text);
+			if (!text && !strokes.length) return;
+			await app.sendNote(contact, text, $state.snapshot(strokes) as ColoredStroke[]);
 			text = '';
+			strokes = [];
 		});
 
 	const addContact = () =>
@@ -93,15 +99,22 @@
 	</div>
 	<div class="mt-3 flex items-stretch">
 		<span class="tab flex items-center" style="background:{tabColor(app.name || 'this laptop')}">{shortName(app.name) || 'you'}</span>
-		<div class="paper flex flex-1 items-center gap-2 rounded-r-sm border-2 border-l-0 px-2 py-1" style="border-color:{tabColor(app.name || 'this laptop')}">
+		<div class="flex flex-1 items-center gap-2 rounded-r-sm border-2 border-l-0 bg-paper px-2 py-1" style="border-color:{tabColor(app.name || 'this laptop')}">
 			<select class="input py-0" bind:value={to}>
 				<option value="">to…</option>
 				{#each app.contacts.filter((c) => !c.revoked) as c (c.name)}<option value={c.name}>{shortName(c.name)}</option>{/each}
 			</select>
 			<input class="min-w-0 flex-1 bg-transparent outline-none" bind:value={text} maxlength="200" placeholder="Write something…" onkeydown={(e) => e.key === 'Enter' && send()} />
+			<button class="btn-secondary" onclick={() => (drawOpen = !drawOpen)} aria-label="draw">✎</button>
 			<button class="btn" disabled={!app.bridgeConnected} onclick={send}>Send</button>
 		</div>
 	</div>
+	{#if drawOpen}
+		<div class="mt-2 rounded-sm border-2 border-frame bg-console p-2">
+			<DrawPad bind:strokes />
+			<p class="mt-1 text-xs text-frame-dark">Text and drawing go out together as one note with Send.</p>
+		</div>
+	{/if}
 
 	<div class="mt-5 flex items-center">
 		<h3 class="font-medium">Contacts</h3>

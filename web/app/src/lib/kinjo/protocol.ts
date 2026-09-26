@@ -10,6 +10,7 @@ export const TYPE_IDENTITY = 0x01;
 export const TYPE_SEALED = 0x10;
 export const KIND_TEXT = 0x01;
 export const KIND_DRAWING = 0x02;
+export const KIND_NOTE = 0x03;
 export const BROADCAST = 0xffffffff;
 export const DEFAULT_TTL = 4;
 
@@ -224,15 +225,49 @@ export function textPlaintext(text: string): Uint8Array {
 }
 
 export type Stroke = [number, number][];
+export interface ColoredStroke {
+	/** Index into PALETTE. */
+	color: number;
+	points: Stroke;
+}
 
-export function decodeDrawing(pt: Uint8Array): Stroke[] {
+/** Pen colors (SPEC §9). */
+export const PALETTE = ['#26313d', '#d8453b', '#e0832f', '#d9b92b', '#2f9e5b', '#3d6fd6', '#8a57d6', '#d4548e'];
+const COLOR_MARKER = 0x00;
+
+export function decodeDrawingColored(pt: Uint8Array): ColoredStroke[] {
 	if (!pt.length || pt[0] !== KIND_DRAWING) throw new ProtocolError('not a drawing');
+	return decodeItems(pt, 1);
+}
+
+/** NOTE: text and drawing in one message (SPEC §6). */
+export function notePlaintext(text: string, strokes: ColoredStroke[]): Uint8Array {
+	const t = utf8.encode(text);
+	if (t.length > MAX_TEXT) throw new ProtocolError('text too long');
+	return concat(new Uint8Array([KIND_NOTE, t.length]), t, encodeDrawing(strokes).subarray(1));
+}
+
+export function decodeNote(pt: Uint8Array): { text: string; strokes: ColoredStroke[] } {
+	if (pt.length < 2 || pt[0] !== KIND_NOTE) throw new ProtocolError('not a note');
+	const n = pt[1];
+	if (n > MAX_TEXT || 2 + n > pt.length) throw new ProtocolError('bad note text');
+	return { text: fromUtf8.decode(pt.subarray(2, 2 + n)), strokes: decodeItems(pt, 2 + n) };
+}
+
+function decodeItems(pt: Uint8Array, start: number): ColoredStroke[] {
 	const v = new DataView(pt.buffer, pt.byteOffset, pt.byteLength);
-	const strokes: Stroke[] = [];
-	let i = 1;
+	const strokes: ColoredStroke[] = [];
+	let i = start;
+	let color = 0;
 	while (i < pt.length) {
 		const count = pt[i];
-		if (count === 0 || i + 5 + 2 * (count - 1) > pt.length) throw new ProtocolError('bad stroke');
+		if (count === COLOR_MARKER) {
+			if (i + 1 >= pt.length || pt[i + 1] >= PALETTE.length) throw new ProtocolError('bad color');
+			color = pt[i + 1];
+			i += 2;
+			continue;
+		}
+		if (i + 5 + 2 * (count - 1) > pt.length) throw new ProtocolError('bad stroke');
 		let x = v.getUint16(i + 1, true);
 		let y = v.getUint16(i + 3, true);
 		i += 5;
@@ -243,10 +278,54 @@ export function decodeDrawing(pt: Uint8Array): Stroke[] {
 			i += 2;
 			stroke.push([x, y]);
 		}
-		strokes.push(stroke);
+		strokes.push({ color, points: stroke });
 	}
 	return strokes;
 }
+
+export const CANVAS_W = 320;
+export const CANVAS_H = 240;
+
+/** Points after `a` up to `b`, each step at most 127 on both axes (like the reference). */
+function steps(a: [number, number], b: [number, number]): [number, number][] {
+	const dx = b[0] - a[0];
+	const dy = b[1] - a[1];
+	const n = Math.max(1, Math.ceil(Math.max(Math.abs(dx), Math.abs(dy)) / 127));
+	const out: [number, number][] = [];
+	for (let i = 1; i <= n; i++) out.push([a[0] + Math.floor((dx * i) / n), a[1] + Math.floor((dy * i) / n)]);
+	return out;
+}
+
+/** DRAWING plaintext. Big jumps get intermediate points, long strokes get split, colors only when they change. */
+export function encodeDrawing(strokes: ColoredStroke[]): Uint8Array {
+	const out: number[] = [KIND_DRAWING];
+	let current = 0;
+	for (const { color, points: stroke } of strokes) {
+		if (!stroke.length) continue;
+		if (color < 0 || color >= PALETTE.length) throw new ProtocolError(`color ${color} not in the palette`);
+		if (color !== current) {
+			out.push(COLOR_MARKER, color);
+			current = color;
+		}
+		for (const [x, y] of stroke) {
+			if (x < 0 || x >= CANVAS_W || y < 0 || y >= CANVAS_H) throw new ProtocolError(`point ${x},${y} off canvas`);
+		}
+		let points: [number, number][] = [stroke[0]];
+		for (const p of stroke.slice(1)) points = points.concat(steps(points[points.length - 1], p));
+		while (points.length) {
+			const chunk = points.slice(0, 255);
+			points = points.length > 255 ? points.slice(254) : [];
+			out.push(chunk.length, chunk[0][0] & 0xff, chunk[0][0] >> 8, chunk[0][1] & 0xff, chunk[0][1] >> 8);
+			for (let i = 1; i < chunk.length; i++) {
+				out.push((chunk[i][0] - chunk[i - 1][0]) & 0xff, (chunk[i][1] - chunk[i - 1][1]) & 0xff);
+			}
+		}
+	}
+	return new Uint8Array(out);
+}
+
+/** Strokes without their colors. */
+export const decodeDrawing = (pt: Uint8Array): Stroke[] => decodeDrawingColored(pt).map((s) => s.points);
 
 // --- Serial framing (SPEC §12) ---
 

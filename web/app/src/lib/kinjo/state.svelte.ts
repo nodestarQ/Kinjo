@@ -9,7 +9,7 @@ import { PARENT, createEns, keyHex } from './ens';
 import { loadContacts, loadName, loadPrivateKey, resetPrivateKey, saveContacts, saveName } from './identity';
 import { MeshNode, type Contact, type Message, type PacketEvent } from './mesh';
 import { onboardingAbi } from './onboarding';
-import { FRAME_LOG, FRAME_RADIO_RX, FRAME_RADIO_TX, type DeviceInfo } from './protocol';
+import { FRAME_LOG, FRAME_RADIO_RX, FRAME_RADIO_TX, type ColoredStroke, type DeviceInfo } from './protocol';
 import { SerialLink, type HelperPort } from './serial';
 
 const MAX_PACKETS = 100;
@@ -125,6 +125,14 @@ class AppState {
 
 	async sendText(to: Contact, text: string) {
 		for (const p of this.node.sealText(to, text)) await this.bridge.send(FRAME_RADIO_TX, p);
+	}
+
+	/** Sends text, drawing or both as one note. */
+	async sendNote(to: Contact, text: string, strokes: ColoredStroke[]) {
+		for (const p of this.node.sealNote(to, text, strokes)) {
+			await this.bridge.send(FRAME_RADIO_TX, p);
+			await new Promise((r) => setTimeout(r, 15)); // let the bridge send each fragment
+		}
 	}
 
 	// --- ENS and onboarding (docs/onboarding.md) ---

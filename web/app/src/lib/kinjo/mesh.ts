@@ -5,10 +5,14 @@ import { randomBytes } from '@noble/hashes/utils.js';
 
 import {
 	KIND_DRAWING,
+	KIND_NOTE,
 	KIND_TEXT,
 	Reassembler,
 	TYPE_SEALED,
-	decodeDrawing,
+	decodeDrawingColored,
+	decodeNote,
+	notePlaintext,
+	encodeDrawing,
 	deriveKey,
 	nodeId,
 	openSealed,
@@ -16,8 +20,8 @@ import {
 	publicKey,
 	seal,
 	textPlaintext,
-	type Header,
-	type Stroke
+	type ColoredStroke,
+	type Header
 } from './protocol';
 
 export interface Contact {
@@ -37,7 +41,7 @@ export interface Message {
 	outgoing: boolean;
 	status: MessageStatus;
 	text?: string;
-	strokes?: Stroke[];
+	strokes?: ColoredStroke[];
 }
 
 export interface PacketEvent {
@@ -116,15 +120,41 @@ export class MeshNode {
 		}
 		const msg: Message = { ...base, from: contact.name, status: 'verified' };
 		if (pt[0] === KIND_TEXT) msg.text = new TextDecoder().decode(pt.subarray(1));
-		else if (pt[0] === KIND_DRAWING) msg.strokes = decodeDrawing(pt);
+		else if (pt[0] === KIND_DRAWING) msg.strokes = decodeDrawingColored(pt);
+		else if (pt[0] === KIND_NOTE) {
+			const note = decodeNote(pt);
+			if (note.text) msg.text = note.text;
+			if (note.strokes.length) msg.strokes = note.strokes;
+		}
 		this.onMessage(msg);
 	}
 
 	/** Packets for a sealed text to `to`, ready to send as RADIO_TX. */
 	sealText(to: Contact, text: string, now = Date.now()): Uint8Array[] {
-		const messageId = new DataView(randomBytes(4).buffer).getUint32(0, true);
-		const packets = seal(deriveKey(this.priv, to.pub), this.id, nodeId(to.pub), messageId, textPlaintext(text), randomBytes(12));
-		this.onMessage({ id: messageId, at: now, from: to.name, outgoing: true, status: 'verified', text });
-		return packets;
+		const packets = this.sealTo(to, textPlaintext(text));
+		this.onMessage({ id: packets.id, at: now, from: to.name, outgoing: true, status: 'verified', text });
+		return packets.packets;
+	}
+
+	/** Packets for a sealed drawing to `to`. */
+	sealDrawing(to: Contact, strokes: ColoredStroke[], now = Date.now()): Uint8Array[] {
+		const packets = this.sealTo(to, encodeDrawing(strokes));
+		this.onMessage({ id: packets.id, at: now, from: to.name, outgoing: true, status: 'verified', strokes });
+		return packets.packets;
+	}
+
+	/** Text and drawing together. Falls back to TEXT or DRAWING when one part is empty. */
+	sealNote(to: Contact, text: string, strokes: ColoredStroke[], now = Date.now()): Uint8Array[] {
+		if (!strokes.length) return this.sealText(to, text, now);
+		if (!text) return this.sealDrawing(to, strokes, now);
+		const packets = this.sealTo(to, notePlaintext(text, strokes));
+		this.onMessage({ id: packets.id, at: now, from: to.name, outgoing: true, status: 'verified', text, strokes });
+		return packets.packets;
+	}
+
+	private sealTo(to: Contact, plaintext: Uint8Array) {
+		const id = new DataView(randomBytes(4).buffer).getUint32(0, true);
+		const packets = seal(deriveKey(this.priv, to.pub), this.id, nodeId(to.pub), id, plaintext, randomBytes(12));
+		return { id, packets };
 	}
 }

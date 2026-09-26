@@ -11,11 +11,15 @@
 	const rejected = $derived(!m.outgoing && m.status !== 'verified');
 </script>
 
-<li class="flex items-start">
-	<span class="tab mt-0 flex min-w-20 items-center py-1" style="background:{color}">
+<!-- Own messages on the left, other devices on the right. -->
+<li class="flex flex-col" class:items-start={m.outgoing} class:items-end={!m.outgoing}>
+	<span class="tab px-2 py-0.5 {m.outgoing ? 'rounded-l-none rounded-tl-sm' : 'rounded-tr-sm rounded-l-none rounded-tl-sm'}" style="background:{color}">
 		{shortName(who)}{#if !m.outgoing && m.status === 'verified'}<span class="ml-1" title="key matches ENS">✓</span>{/if}
 	</span>
-	<div class="paper min-h-11 flex-1 rounded-sm rounded-tl-none border-2 px-2 py-1 leading-[22px]" style="border-color:{color}">
+	<div
+		class="min-h-9 w-[85%] rounded-sm border-2 bg-paper px-2 py-1.5 {m.outgoing ? 'rounded-tl-none' : 'rounded-tr-none'}"
+		style="border-color:{color}"
+	>
 		{#if m.outgoing}<span class="text-xs text-frame-dark">to {shortName(m.from)} · </span>{/if}
 		{#if rejected}
 			<span class="text-sm text-red-700">{m.status === 'revoked' ? 'REVOKED in ENS' : m.status}: message rejected</span>

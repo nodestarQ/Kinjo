@@ -69,10 +69,33 @@ describe('crypto', () => {
 });
 
 describe('payloads', () => {
-	it('decodes drawings', () => {
-		for (const c of load('drawing.json').cases) {
+	it('decodes drawings with colors', () => {
+		const v = load('drawing.json');
+		expect(k.PALETTE).toEqual(v.palette);
+		for (const c of v.cases) {
 			expect(k.decodeDrawing(hex(c.plaintext))).toEqual(c.decoded);
+			expect(k.decodeDrawingColored(hex(c.plaintext)).map((s) => s.color)).toEqual(c.decoded_colors);
 		}
+		expect(() => k.decodeDrawingColored(new Uint8Array([k.KIND_DRAWING, 0, 8]))).toThrow();
+	});
+
+	it('encodes and decodes notes like the reference', () => {
+		for (const c of load('drawing.json').notes) {
+			const strokes = c.strokes.map((points: [number, number][], i: number) => ({ color: c.colors[i], points }));
+			expect(bytesToHex(k.notePlaintext(c.text, strokes))).toBe(c.plaintext);
+			const note = k.decodeNote(hex(c.plaintext));
+			expect(note.text).toBe(c.text);
+			expect(note.strokes.map((s) => s.points)).toEqual(c.decoded);
+		}
+		expect(() => k.decodeNote(new Uint8Array([k.KIND_NOTE, 5, 97]))).toThrow();
+	});
+
+	it('encodes drawings like the reference', () => {
+		for (const c of load('drawing.json').cases) {
+			const strokes = c.strokes.map((points: [number, number][], i: number) => ({ color: c.colors[i], points }));
+			expect(bytesToHex(k.encodeDrawing(strokes))).toBe(c.plaintext);
+		}
+		expect(() => k.encodeDrawing([{ color: 0, points: [[320, 0]] }])).toThrow();
 	});
 });
 

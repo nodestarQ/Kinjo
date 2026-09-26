@@ -4,7 +4,7 @@ import { hexToBytes } from '@noble/hashes/utils.js';
 import { describe, expect, it } from 'vitest';
 
 import { MeshNode, type Contact, type Message } from './mesh';
-import { Reassembler, deriveKey, openSealed } from './protocol';
+import { Reassembler, decodeDrawingColored, deriveKey, openSealed } from './protocol';
 
 const VECTORS = fileURLToPath(new URL('../../../../../protocol/test-vectors/', import.meta.url));
 const load = (name: string) => JSON.parse(readFileSync(VECTORS + name, 'utf8'));
@@ -56,6 +56,19 @@ describe('MeshNode', () => {
 		const { node, messages } = laptop([wrongKey]);
 		node.handleRadioRx(radioRx(sealed[0].packets[0]));
 		expect(messages[0].status).toBe('failed to open');
+	});
+
+	it('seals drawings the handheld can open', () => {
+		const { node } = laptop([handheld]);
+		const strokes = [{ color: 5, points: Array.from({ length: 300 }, (_, i): [number, number] => [i % 320, (i * 3) % 240]) }];
+		const packets = node.sealDrawing(handheld, strokes);
+		expect(packets.length).toBeGreaterThan(1); // big enough for several fragments
+		const r = new Reassembler();
+		let done = null;
+		for (const p of packets) done = r.push(p, 0) ?? done;
+		const key = deriveKey(hexToBytes(keys.handheld.private), node.pub);
+		const pt = openSealed(key, done!.header, done!.body);
+		expect(decodeDrawingColored(pt)[0].color).toBe(5);
 	});
 
 	it('seals texts the handheld can open', () => {
