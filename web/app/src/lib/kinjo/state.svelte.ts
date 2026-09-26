@@ -3,14 +3,14 @@
 import { bytesToHex } from '@noble/hashes/utils.js';
 import type { Address, WalletClient } from 'viem';
 
-import { ensConfig, teamAddress } from './config';
+import { ensConfig, serialHelperUrl, teamAddress } from './config';
 import { DeviceLink } from './device';
 import { PARENT, createEns, keyHex } from './ens';
 import { loadContacts, loadName, loadPrivateKey, resetPrivateKey, saveContacts, saveName } from './identity';
 import { MeshNode, type Contact, type Message, type PacketEvent } from './mesh';
 import { onboardingAbi } from './onboarding';
 import { FRAME_LOG, FRAME_RADIO_RX, FRAME_RADIO_TX, type DeviceInfo } from './protocol';
-import { SerialLink } from './serial';
+import { SerialLink, type HelperPort } from './serial';
 
 const MAX_PACKETS = 100;
 const MAX_LOG = 50;
@@ -36,6 +36,8 @@ class AppState {
 	/** What the last ENS syncs changed, newest first. */
 	notices = $state<string[]>([]);
 	busy = $state('');
+	/** Open port picker (serial helper mode). */
+	portChoice = $state<{ ports: HelperPort[]; resolve: (path: string | null) => void } | null>(null);
 
 	readonly ens = createEns(ensConfig);
 	private wallet: WalletClient | null = null;
@@ -62,13 +64,29 @@ class AppState {
 				if (type === FRAME_RADIO_RX) this.node.handleRadioRx(body);
 				else if (type === FRAME_LOG) this.pushLog(this.bridgeLog, new TextDecoder().decode(body));
 			},
-			() => (this.bridgeConnected = false)
+			() => (this.bridgeConnected = false),
+			serialHelperUrl,
+			(ports) => this.pickPort(ports)
 		);
 		this.deviceLink = new DeviceLink(
 			(line) => this.pushLog(this.deviceLog, line),
-			() => (this.device = null)
+			() => (this.device = null),
+			serialHelperUrl,
+			(ports) => this.pickPort(ports)
 		);
 		if (typeof window !== 'undefined' && this.contacts.length) this.startSync();
+	}
+
+	private pickPort(ports: HelperPort[]): Promise<string | null> {
+		return new Promise((resolve) => {
+			this.portChoice = {
+				ports,
+				resolve: (path) => {
+					this.portChoice = null;
+					resolve(path);
+				}
+			};
+		});
 	}
 
 	private pushLog(log: string[], line: string) {

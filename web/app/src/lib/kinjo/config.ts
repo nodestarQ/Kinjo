@@ -5,7 +5,8 @@ import {
 	PUBLIC_KINJO_ONBOARDING,
 	PUBLIC_KINJO_RPC_URL,
 	PUBLIC_KINJO_TEAM,
-	PUBLIC_RELAYER_URL
+	PUBLIC_RELAYER_URL,
+	PUBLIC_SERIAL_HELPER
 } from '$env/static/public';
 import type { Address } from 'viem';
 
@@ -19,3 +20,6 @@ export const ensConfig: EnsConfig = {
 };
 
 export const teamAddress = PUBLIC_KINJO_TEAM.toLowerCase();
+
+/** Local serial helper (firmware/tools/serial_helper.py). Empty: use the browser's Web Serial. */
+export const serialHelperUrl = PUBLIC_SERIAL_HELPER.replace(/\/$/, '');

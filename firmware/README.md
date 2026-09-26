@@ -9,7 +9,7 @@ Arduino sketches for the three boards plus the shared protocol library.
 | `src/handheld` | ESP32-DevKitC | key and contacts in flash, USB provisioning, sealed send and receive, screen UI (`ui.h`) |
 | `lib/kinjo` | all | wire format, crypto, radio glue. `topology.h` holds the board MACs |
 | `test` | laptop | library tests against `protocol/test-vectors` |
-| `tools` | laptop | `monitor.py` shows a board's serial frames, `provision.py` sends USB provisioning commands |
+| `tools` | laptop | `monitor.py` shows a board's serial frames, `provision.py` sends USB provisioning commands, `serial_helper.py` serves the ports to the web app |
 
 Toolchain: esp32 core **2.0.17**. Board wiring: [docs/hardware.md](../docs/hardware.md).
 
@@ -103,3 +103,5 @@ python monitor.py <bridge port> --as-laptop --peer <handheld public key> [--send
 ```
 
 Pass: the bridge monitor prints `opened: TEXT 'gm Tokyo'`. With `--send-test` the handheld logs `rx text from laptop.alice.kinjo.eth: test 1` and so on.
+
+Opening a XIAO's port restarts it. Don't open and close the relay's port during a demo. Power it from a power bank. Otherwise leave one monitor open the whole time.

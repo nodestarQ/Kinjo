@@ -10,7 +10,7 @@ import {
 	provision,
 	type DeviceInfo
 } from './protocol';
-import { SerialLink } from './serial';
+import { SerialLink, type PortChooser } from './serial';
 
 const STATUS_TEXT = ['OK', 'malformed request', 'contact list full', 'unknown command'];
 const REPLY_TIMEOUT_MS = 3000;
@@ -19,11 +19,16 @@ export class DeviceLink {
 	private link: SerialLink;
 	private pending: { resolve: (data: Uint8Array) => void; reject: (e: Error) => void; command: number } | null = null;
 
-	constructor(onLog: (line: string) => void, onClose: () => void) {
-		this.link = new SerialLink((type, body) => {
-			if (type === FRAME_LOG) onLog(new TextDecoder().decode(body));
-			if (type === FRAME_PROVISION_REPLY) this.handleReply(body);
-		}, onClose);
+	constructor(onLog: (line: string) => void, onClose: () => void, helperUrl = '', choosePort?: PortChooser) {
+		this.link = new SerialLink(
+			(type, body) => {
+				if (type === FRAME_LOG) onLog(new TextDecoder().decode(body));
+				if (type === FRAME_PROVISION_REPLY) this.handleReply(body);
+			},
+			onClose,
+			helperUrl,
+			choosePort
+		);
 	}
 
 	get connected(): boolean {

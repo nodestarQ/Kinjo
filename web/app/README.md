@@ -19,4 +19,12 @@ pnpm build    # static files in build/
 | `src/lib/kinjo/mesh.ts` | the laptop node: opens and seals messages |
 | `src/routes` | pages |
 
+If the browser's Web Serial drops the boards ("The device has been lost", seen with Chrome on Linux), use the local serial helper instead:
+
+```sh
+cd firmware/tools && python serial_helper.py   # venv from firmware/README.md
+```
+
+and set `PUBLIC_SERIAL_HELPER=ws://127.0.0.1:8765` in `.env`. The app then lists the ports itself.
+
 ENS tests run against the local fork: start `contracts/script/local-fork.sh`, then export the `KINJO_*` lines it prints before `pnpm test`.
