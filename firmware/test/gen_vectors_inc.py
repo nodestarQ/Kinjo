@@ -74,6 +74,17 @@ def main(out_path):
     f = c["serial_frame"]
     lines.append(f"static const SerialFrameCase SERIAL_FRAME = {{{f['frame_type']}, {s(f['body'])}, {s(f['wire'])}}};")
 
+    p = load("provision.json")
+    lines.append("static const std::vector<ProvisionCase> PROVISION_REQUESTS = {")
+    lines += [f"  {{{s(r['label'])}, {s(r['body'])}}}," for r in p["requests"]]
+    lines.append("};")
+    lines.append("static const std::vector<ProvisionCase> PROVISION_REPLIES = {")
+    lines += [f"  {{{s(r['label'])}, {s(r['body'])}}}," for r in p["replies"]]
+    lines.append("};")
+    lines.append("static const std::vector<ProvisionCase> PROVISION_MALFORMED = {")
+    lines += [f"  {{{s(m['label'])}, {s(m['body'])}}}," for m in p["malformed"]]
+    lines.append("};")
+
     Path(out_path).write_text("\n".join(lines) + "\n")
 
 

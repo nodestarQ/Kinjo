@@ -45,6 +45,25 @@ constexpr uint8_t FRAME_RADIO_RX = 0x01;
 constexpr uint8_t FRAME_RADIO_TX = 0x02;
 constexpr uint8_t FRAME_LOG = 0x03;
 constexpr uint8_t FRAME_PROVISION = 0x04;
+constexpr uint8_t FRAME_PROVISION_REPLY = 0x05;
+constexpr uint8_t FRAME_SEND_TEXT = 0x06;
+
+constexpr uint8_t CMD_INFO = 0x01;
+constexpr uint8_t CMD_SET_NAME = 0x02;
+constexpr uint8_t CMD_ADD_CONTACT = 0x03;
+constexpr uint8_t CMD_CLEAR_CONTACTS = 0x04;
+constexpr uint8_t CMD_WIPE = 0x05;
+
+constexpr uint8_t STATUS_OK = 0x00;
+constexpr uint8_t STATUS_MALFORMED = 0x01;
+constexpr uint8_t STATUS_FULL = 0x02;
+constexpr uint8_t STATUS_UNKNOWN_COMMAND = 0x03;
+
+constexpr uint8_t FLAG_VERIFIED = 0x01;
+constexpr size_t MAX_CONTACTS = 64;
+constexpr size_t MAX_BLOCKS = 256;
+constexpr size_t INFO_MAX = KEY_SIZE + 4 + 1 + MAX_NAME;
+constexpr size_t PROVISION_REPLY_MAX = 2 + INFO_MAX;
 
 // --- Header (SPEC §5) ---
 
@@ -188,5 +207,38 @@ class FrameReader {
 
 // Writes COBS(type + body) + 0x00 into `out`. Returns total length.
 size_t serial_frame(uint8_t type, const uint8_t* body, size_t body_len, uint8_t* out);
+
+// --- Device state and provisioning (SPEC §13) ---
+
+struct Contact {
+  uint8_t flags;
+  uint8_t pub[KEY_SIZE];
+  uint8_t name_len;
+  char name[MAX_NAME];
+};
+
+// Everything a device keeps in flash. Blocks are stored as 8-byte name hashes.
+struct DeviceState {
+  uint8_t priv[KEY_SIZE];
+  uint8_t pub[KEY_SIZE];
+  uint8_t name_len;
+  char name[MAX_NAME];
+  uint8_t contact_count;
+  Contact contacts[MAX_CONTACTS];
+  uint16_t block_count;
+  uint8_t blocks[MAX_BLOCKS][8];
+};
+
+// Resets the state around a fresh private key (on WIPE and first boot).
+void reset_state(DeviceState& s, const uint8_t new_priv[KEY_SIZE]);
+
+// Handles one PROVISION body and writes the PROVISION_REPLY body into `reply`
+// (PROVISION_REPLY_MAX bytes). `new_priv` supplies 32 random bytes for WIPE.
+// Sets `changed` when the state must be saved. Returns the reply length.
+size_t handle_provision(DeviceState& s, const uint8_t* body, size_t len, void (*new_priv)(uint8_t out[KEY_SIZE]),
+                        uint8_t* reply, bool& changed);
+
+// Contact whose public key starts with `node_id` (SPEC §3). nullptr if none.
+const Contact* find_contact(const DeviceState& s, uint32_t node_id);
 
 }  // namespace kinjo

@@ -57,6 +57,11 @@ struct SerialFrameCase {
   const char* wire;
 };
 
+struct ProvisionCase {
+  const char* label;
+  const char* body;
+};
+
 #include "vectors.inc"
 
 static int failures = 0;
@@ -332,6 +337,73 @@ static void test_cobs() {
   CHECK(done && type == SERIAL_FRAME.frame_type && eq(got, got_len, body), "frame reader");
 }
 
+static const ProvisionCase& provision(const std::vector<ProvisionCase>& cases, const char* label) {
+  for (const ProvisionCase& c : cases) {
+    if (strcmp(c.label, label) == 0) return c;
+  }
+  printf("missing vector %s\n", label);
+  return cases[0];
+}
+
+static void fixed_priv(uint8_t out[KEY_SIZE]) {
+  Bytes k = hex(HANDHELD_PRIV);
+  memcpy(out, k.data(), KEY_SIZE);
+}
+
+static void test_provision() {
+  static DeviceState s;
+  Bytes laptop_priv = hex(LAPTOP_PRIV);
+  reset_state(s, laptop_priv.data());  // some other key, WIPE must replace it
+  uint8_t reply[PROVISION_REPLY_MAX];
+  bool changed;
+
+  // WIPE with the handheld test key gives the "new device" info.
+  Bytes wipe = hex(provision(PROVISION_REQUESTS, "wipe").body);
+  size_t n = handle_provision(s, wipe.data(), wipe.size(), fixed_priv, reply, changed);
+  Bytes expect_new = hex(provision(PROVISION_REPLIES, "info_new_device").body);
+  expect_new[0] = CMD_WIPE;
+  CHECK(changed && eq(reply, n, expect_new), "wipe gives new-device info");
+
+  Bytes info = hex(provision(PROVISION_REQUESTS, "info").body);
+  n = handle_provision(s, info.data(), info.size(), fixed_priv, reply, changed);
+  CHECK(!changed && eq(reply, n, hex(provision(PROVISION_REPLIES, "info_new_device").body)), "info new device");
+
+  Bytes set_name = hex(provision(PROVISION_REQUESTS, "set_name").body);
+  n = handle_provision(s, set_name.data(), set_name.size(), fixed_priv, reply, changed);
+  CHECK(changed && eq(reply, n, hex(provision(PROVISION_REPLIES, "set_name_ok").body)), "set name");
+
+  Bytes add = hex(provision(PROVISION_REQUESTS, "add_contact_verified").body);
+  handle_provision(s, add.data(), add.size(), fixed_priv, reply, changed);
+  handle_provision(s, add.data(), add.size(), fixed_priv, reply, changed);  // same name replaces
+  CHECK(s.contact_count == 1 && s.contacts[0].flags == FLAG_VERIFIED, "add contact replaces by name");
+  CHECK(find_contact(s, LAPTOP_NODE_ID) == &s.contacts[0] && !find_contact(s, HANDHELD_NODE_ID), "find contact");
+
+  s.block_count = 3;  // the provisioned vector has 1 contact and 3 blocks
+  n = handle_provision(s, info.data(), info.size(), fixed_priv, reply, changed);
+  CHECK(eq(reply, n, hex(provision(PROVISION_REPLIES, "info_provisioned").body)), "info provisioned");
+
+  Bytes clear = hex(provision(PROVISION_REQUESTS, "clear_contacts").body);
+  handle_provision(s, clear.data(), clear.size(), fixed_priv, reply, changed);
+  CHECK(changed && s.contact_count == 0, "clear contacts");
+
+  s.contact_count = MAX_CONTACTS;
+  n = handle_provision(s, add.data(), add.size(), fixed_priv, reply, changed);
+  CHECK(!changed && eq(reply, n, hex(provision(PROVISION_REPLIES, "add_contact_full").body)), "contacts full");
+
+  uint8_t unknown[] = {0x7F};
+  n = handle_provision(s, unknown, 1, fixed_priv, reply, changed);
+  CHECK(eq(reply, n, hex(provision(PROVISION_REPLIES, "unknown_command").body)), "unknown command");
+
+  for (const ProvisionCase& m : PROVISION_MALFORMED) {
+    Bytes b = hex(m.body);
+    n = handle_provision(s, b.data(), b.size(), fixed_priv, reply, changed);
+    CHECK(n == 2 && reply[1] == STATUS_MALFORMED && !changed, m.label);
+  }
+
+  n = handle_provision(s, wipe.data(), wipe.size(), fixed_priv, reply, changed);
+  CHECK(s.contact_count == 0 && s.name_len == 0 && s.block_count == 0, "wipe clears everything");
+}
+
 int main() {
   test_header();
   test_fragments();
@@ -342,6 +414,7 @@ int main() {
   test_drawing();
   test_payloads();
   test_cobs();
+  test_provision();
   printf("%d checks, %d failed\n", checks, failures);
   return failures ? 1 : 0;
 }
