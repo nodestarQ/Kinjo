@@ -119,6 +119,8 @@ export function createWorld(config: WorldConfig, deps: WorldDeps) {
 
 		// One human, one name: the nullifier is the same every time this person verifies this action.
 		const nullifier = BigInt(item.nullifier).toString();
+		// A prefix is enough to tell World IDs apart in the log
+		console.log(`world nullifier ${nullifier.slice(0, 12)}... for ${owner}`);
 		const used = await loadNullifiers();
 		const holder = used[nullifier];
 		if (holder && holder !== owner.toLowerCase()) {
