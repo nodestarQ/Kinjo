@@ -65,4 +65,8 @@ inline void load_touch(uint16_t cal[5]) {
 
 inline void save_touch(const uint16_t cal[5]) { prefs.putBytes("touch", cal, 5 * sizeof(uint16_t)); }
 
+// Contacts filter: only verified humans.
+inline bool load_humans_only() { return prefs.getBool("humans", false); }
+inline void save_humans_only(bool on) { prefs.putBool("humans", on); }
+
 }  // namespace storage

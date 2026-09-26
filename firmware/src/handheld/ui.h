@@ -4,6 +4,7 @@
 //
 // Home: four tiles. Chat, Pay, Info (own name and key), Calibrate (touch).
 // Contacts: everyone the web app put on this device. Tap one to open the chat with them.
+//   Tap the right of the title bar to show only verified humans (World ID badge) or everyone.
 // Chat: the last messages with that contact, newest at the bottom. WRITE A NOTE at the bottom.
 // Note: lined paper to draw and write on. Toolbar at the right: color, ABC, clear, send.
 //   SEND sends what is on the note: text, drawing or both (a NOTE message).
@@ -86,6 +87,7 @@ enum class Screen { Home, Contacts, Chat, Note, Palette, Keyboard, View, Info, P
 static Screen screen = Screen::Home;
 static uint8_t peer = 0;  // contact of the open chat
 static uint8_t unread[MAX_CONTACTS];
+static bool humans_only = false;  // contacts filter, kept in flash
 
 // --- message history (all chats together, oldest dropped first) ---
 
@@ -98,6 +100,7 @@ struct Msg {
   uint16_t color;
   bool outgoing;
   bool failed;
+  bool human;  // sender has the World ID badge
   char text[MAX_TEXT + 1];
   int8_t drawing;  // slot in `drawings` (-1: none)
 };
@@ -198,6 +201,21 @@ static const Contact* chat_contact() {
 
 static uint32_t contact_hash(const Contact& c) { return name_hash(c.name, c.name_len); }
 
+// The badge belongs to the owner, so this device is verified if any device of the same owner is:
+// "handheld.alice.kinjo.eth" is verified when e.g. "laptop.alice.kinjo.eth" has the flag.
+static bool owner_verified() {
+  const char* dot = (const char*)memchr(state->name, '.', state->name_len);
+  if (!dot) return false;
+  size_t suffix = state->name_len - (dot - state->name);  // ".alice.kinjo.eth"
+  for (uint8_t i = 0; i < state->contact_count; i++) {
+    const Contact& c = state->contacts[i];
+    if ((c.flags & FLAG_VERIFIED) && c.name_len > suffix && memcmp(c.name + c.name_len - suffix, dot, suffix) == 0) return true;
+  }
+  return false;
+}
+
+static bool visible(uint8_t i) { return !humans_only || (state->contacts[i].flags & FLAG_VERIFIED); }
+
 static Msg& new_msg(const Contact& other, const char* tab_name, size_t tab_len, bool outgoing) {
   if (msg_count == MAX_MSGS) {
     if (msgs[0].drawing >= 0) drawing_len[msgs[0].drawing] = 0;
@@ -210,6 +228,7 @@ static Msg& new_msg(const Contact& other, const char* tab_name, size_t tab_len, 
   short_name(tab_name, tab_len, m.name, sizeof(m.name));
   m.color = tab_color(tab_name, tab_len);
   m.outgoing = outgoing;
+  m.human = outgoing ? owner_verified() : (other.flags & FLAG_VERIFIED);
   m.drawing = -1;
   return m;
 }
@@ -244,12 +263,25 @@ static void paper(int x, int y, int w, int h) {
   for (int ly = y + RULE; ly < y + h; ly += RULE) tft.drawFastHLine(x, ly, w, RULE_COLOR);
 }
 
-static void name_tab(int x, int y, const char* name, uint16_t color) {
+// A verified human gets a small white check mark at the end of the tab.
+constexpr int CHECK_W = 9;
+static int tab_width(const char* name, bool human) {
   tft.setTextFont(1);
-  int w = tft.textWidth(name) + 8;
+  return tft.textWidth(name) + 8 + (human ? CHECK_W : 0);
+}
+
+static void name_tab(int x, int y, const char* name, uint16_t color, bool human = false) {
+  int w = tab_width(name, human);
   tft.fillRect(x, y, w, TAB_H, color);
   tft.setTextColor(TFT_WHITE, color);
   tft.drawString(name, x + 4, y + 3);
+  if (human) {
+    int cx = x + w - CHECK_W - 1, cy = y + 7;
+    tft.drawLine(cx, cy, cx + 2, cy + 3, TFT_WHITE);
+    tft.drawLine(cx + 2, cy + 3, cx + 7, cy - 3, TFT_WHITE);
+    tft.drawLine(cx, cy - 1, cx + 2, cy + 2, TFT_WHITE);
+    tft.drawLine(cx + 2, cy + 2, cx + 7, cy - 4, TFT_WHITE);
+  }
 }
 
 // Title bar with an optional "<" (back) at the left and a note at the right.
@@ -361,7 +393,7 @@ static void show_home() {
   tft.fillTriangle(cx - 14, cy + 13, cx - 4, cy + 13, cx - 18, cy + 24, ACCENT);
   for (int d = -12; d <= 12; d += 12) tft.fillCircle(cx + d, cy - 2, 3, TFT_WHITE);
   uint16_t total = 0;
-  for (uint8_t i = 0; i < state->contact_count; i++) total += unread[i];
+  for (uint8_t i = 0; i < state->contact_count; i++) total += visible(i) ? unread[i] : 0;
   if (total) {
     char n[6];
     snprintf(n, sizeof(n), "%u", total);
@@ -395,22 +427,38 @@ static void show_home() {
 
 // --- contacts screen ---
 
+// Contact indices shown with the current filter.
+static uint8_t shown[MAX_CONTACTS];
+static uint8_t shown_count = 0;
+static void filter_contacts() {
+  shown_count = 0;
+  for (uint8_t i = 0; i < state->contact_count; i++) {
+    if (visible(i)) shown[shown_count++] = i;
+  }
+}
+
+constexpr int FILTER_W = 130;  // tap area of the filter at the right of the title bar
+
 static void show_contacts() {
   tft.fillScreen(CONSOLE);
-  char count[16];
-  snprintf(count, sizeof(count), "%u", state->contact_count);
-  title_bar("Contacts", count);
-  if (!state->contact_count) {
-    centered("No contacts yet.", H / 2 - 10);
-    centered("Add them in the Kinjo web app.", H / 2 + 10);
+  filter_contacts();
+  char filter[32];
+  uint8_t hidden = state->contact_count - shown_count;
+  if (humans_only) snprintf(filter, sizeof(filter), "humans only (%u hidden)", hidden);
+  else snprintf(filter, sizeof(filter), "all (%u)", state->contact_count);
+  title_bar("Contacts", filter);
+  if (!shown_count) {
+    centered(state->contact_count ? "No verified humans yet." : "No contacts yet.", H / 2 - 10);
+    centered(state->contact_count ? "Tap the top right to show all." : "Add them in the Kinjo web app.", H / 2 + 10);
     return;
   }
-  bool paged = state->contact_count > ROWS;
+  bool paged = shown_count > ROWS;
   int per_page = paged ? ROWS - 1 : ROWS;
-  if (contacts_page * per_page >= state->contact_count) contacts_page = 0;
+  if (contacts_page * per_page >= shown_count) contacts_page = 0;
   for (int r = 0; r < per_page; r++) {
-    int i = contacts_page * per_page + r;
-    if (i >= state->contact_count) break;
+    int s_i = contacts_page * per_page + r;
+    if (s_i >= shown_count) break;
+    uint8_t i = shown[s_i];
     const Contact& c = state->contacts[i];
     int y = HEADER_H + r * ROW_H;
     tft.fillRect(0, y, W, ROW_H - 2, PAPER);
@@ -432,19 +480,13 @@ static void show_contacts() {
       tft.setTextDatum(TL_DATUM);
       x -= 24;
     }
-    if (c.flags & FLAG_VERIFIED) {
-      tft.setTextFont(1);
-      tft.setTextColor(ACCENT, PAPER);
-      tft.setTextDatum(MR_DATUM);
-      tft.drawString("human", x, y + ROW_H / 2 - 1);
-      tft.setTextDatum(TL_DATUM);
-    }
+    if (c.flags & FLAG_VERIFIED) name_tab(x - tab_width("human", true), y + 8, "human", ACCENT, true);
   }
   if (paged) {
     int y = HEADER_H + (ROWS - 1) * ROW_H;
     tft.fillRect(0, y, W, ROW_H - 2, FRAME);
     char more[24];
-    int pages = (state->contact_count + per_page - 1) / per_page;
+    int pages = (shown_count + per_page - 1) / per_page;
     snprintf(more, sizeof(more), "more (%d/%d)", contacts_page + 1, pages);
     centered(more, y + ROW_H / 2 - 1, TFT_WHITE, FRAME);
   }
@@ -491,8 +533,7 @@ static int text_lines(const Msg& m) { return layout_text(m.text, 0, 0, STRIP_W -
 
 // Strips fit their content, like chat bubbles. At least as wide as the name tab.
 static void strip_size(const Msg& m, int& w, int& h) {
-  tft.setTextFont(1);
-  int tab_w = tft.textWidth(m.name) + 8;
+  int tab_w = tab_width(m.name, m.human);
   w = 0;
   h = 8;
   if (m.text[0]) {
@@ -527,9 +568,8 @@ static void draw_msg(const Msg& m, int y) {
   int sw, sh;
   strip_size(m, sw, sh);
   int x = m.outgoing ? 4 : W - 4 - sw;  // own on the left, others on the right
-  tft.setTextFont(1);
-  int tab_w = tft.textWidth(m.name) + 8;
-  name_tab(m.outgoing ? x : x + sw - tab_w, y, m.name, color);
+  int tab_w = tab_width(m.name, m.human);
+  name_tab(m.outgoing ? x : x + sw - tab_w, y, m.name, color, m.human && !m.failed);
   int sy = y + TAB_H;
   tft.fillRect(x, sy, sw, sh, PAPER);  // plain: only the note is ruled
   tft.drawRect(x, sy, sw, sh, color);
@@ -641,7 +681,7 @@ static void show_note() {
   title_bar(title);
   char own[40];
   short_name(state->name, state->name_len, own, sizeof(own));
-  if (state->name_len) name_tab(0, HEADER_H, own, tab_color(state->name, state->name_len));
+  if (state->name_len) name_tab(0, HEADER_H, own, tab_color(state->name, state->name_len), owner_verified());
   if (kb_len) {  // the text written with the keyboard sits at the top of the note
     tft.setTextFont(2);
     tft.setTextColor(INK, PAPER);
@@ -779,6 +819,7 @@ static void show_info() {
   y += 46;
   snprintf(buf, sizeof(buf), "%u", state->contact_count);
   info_row(y, "CONTACTS", buf);
+  info_row(y, "WORLD ID", owner_verified() ? "verified human" : "not verified (optional, in the web app)");
   info_row(y, "RADIO MAC", WiFi.macAddress().c_str());
 }
 
@@ -869,6 +910,7 @@ inline void begin(DeviceState& s) {
     b.down = b.held = digitalRead(b.pin) == LOW;
   }
   storage::load_touch(cal_data);
+  humans_only = storage::load_humans_only();
   tft.init();
   tft.setRotation(1);
   tft.setTouch(cal_data);
@@ -969,19 +1011,28 @@ static void on_tap_home(int x, int y) {
   }
 }
 
-static void on_tap_contacts(int, int y) {
-  if (y < HEADER_H || !state->contact_count) return;
+static void on_tap_contacts(int x, int y) {
+  if (y < HEADER_H) {
+    if (x >= W - FILTER_W) {  // filter: all <-> verified humans only
+      humans_only = !humans_only;
+      storage::save_humans_only(humans_only);
+      contacts_page = 0;
+      show_contacts();
+    }
+    return;
+  }
+  if (!shown_count) return;
   int r = (y - HEADER_H) / ROW_H;
-  bool paged = state->contact_count > ROWS;
+  bool paged = shown_count > ROWS;
   int per_page = paged ? ROWS - 1 : ROWS;
   if (paged && r == ROWS - 1) {
     contacts_page++;
     show_contacts();
     return;
   }
-  int i = contacts_page * per_page + r;
-  if (r >= per_page || i >= state->contact_count) return;
-  peer = i;
+  int s_i = contacts_page * per_page + r;
+  if (r >= per_page || s_i >= shown_count) return;
+  peer = shown[s_i];
   switch_to(Screen::Chat);
 }
 
