@@ -9,7 +9,7 @@
 //   SEND sends what is on the note: text, drawing or both (a NOTE message).
 // Palette: opened from the color button, 8 pen colors to pick from.
 // Keyboard: opened from ABC. The text goes onto the note, DONE returns to it.
-// View: tap a drawing in the chat to see it full screen. The X closes it.
+// View: tap a message in the chat to see all of it full screen. The X closes it.
 // "< Back" at the top left of every screen but Home goes back one screen, like the BACK button.
 //
 // Buttons (INPUT_PULLUP, pressed = LOW):
@@ -98,7 +98,7 @@ struct Msg {
   uint16_t color;
   bool outgoing;
   bool failed;
-  char text[96];
+  char text[MAX_TEXT + 1];
   int8_t drawing;  // slot in `drawings` (-1: none)
 };
 static Msg msgs[MAX_MSGS];
@@ -142,7 +142,7 @@ constexpr int CELL_H = (H - HEADER_H - 3 * GAP) / 2;
 static uint8_t pen_color = 0;
 static bool touch_down = false;  // for taps: act once per touch
 
-// Where the drawings are on the chat screen, for taps.
+// Where the messages are on the chat screen, for taps.
 struct Hit {
   int y0, y1;
   uint8_t msg;
@@ -228,9 +228,14 @@ static void store_items(Msg& m, const uint8_t* items, size_t len) {
   m.drawing = slot;
 }
 
+// The screen font is ASCII only: every other character (one UTF-8 sequence) shows as "?".
 static void set_text(Msg& m, const char* text, size_t len) {
-  size_t n = len < sizeof(m.text) - 1 ? len : sizeof(m.text) - 1;
-  memcpy(m.text, text, n);
+  size_t n = 0;
+  for (size_t i = 0; i < len && n < sizeof(m.text) - 1; i++) {
+    uint8_t c = text[i];
+    if (c < 0x80) m.text[n++] = c;
+    else if (c >= 0xC0) m.text[n++] = '?';  // start of a sequence; continuation bytes are skipped
+  }
   m.text[n] = 0;
 }
 
@@ -447,10 +452,42 @@ static void show_contacts() {
 
 // --- chat screen ---
 
-static int text_lines(const Msg& m) {
+constexpr int STRIP_LINES = 2;  // text lines in a chat strip. The full view shows all of it.
+
+// Lays out `text` in lines of at most `w` pixels, cut at spaces where possible. The last allowed
+// line ends in "..." when text is left over. Draws only if `draw`. Returns the number of lines.
+static int layout_text(const char* text, int x, int y, int w, int max_lines, bool draw) {
   tft.setTextFont(2);
-  return tft.textWidth(m.text) > STRIP_W - 12 ? 2 : 1;
+  size_t len = strlen(text), start = 0;
+  int line = 0;
+  char buf[MAX_TEXT + 4];
+  for (; line < max_lines && start < len; line++) {
+    size_t end = len;
+    for (;;) {
+      memcpy(buf, text + start, end - start);
+      buf[end - start] = 0;
+      if (tft.textWidth(buf) <= w || end <= start + 1) break;
+      size_t cut = end - 1;
+      while (cut > start && text[cut] != ' ') cut--;
+      end = cut > start ? cut : end - 1;
+    }
+    if (line == max_lines - 1 && end < len) {  // last line and more to come: cut and add "..."
+      size_t n = end - start;
+      for (;;) {
+        memcpy(buf, text + start, n);
+        strcpy(buf + n, "...");
+        if (tft.textWidth(buf) <= w || n == 0) break;
+        n--;
+      }
+    }
+    if (draw) tft.drawString(buf, x, y + line * 16);
+    start = end;
+    while (start < len && text[start] == ' ') start++;
+  }
+  return line;
 }
+
+static int text_lines(const Msg& m) { return layout_text(m.text, 0, 0, STRIP_W - 12, STRIP_LINES, false); }
 
 // Strips fit their content, like chat bubbles. At least as wide as the name tab.
 static void strip_size(const Msg& m, int& w, int& h) {
@@ -479,26 +516,10 @@ static int strip_height(const Msg& m) {
   return h;
 }
 
-static void draw_text(const Msg& m, int x, int y, int w) {
+static void draw_text(const Msg& m, int x, int y, int w, int max_lines) {
   tft.setTextFont(2);
   tft.setTextColor(m.failed ? FAIL : INK, PAPER);
-  // Up to two lines, cut at a space where possible.
-  size_t len = strlen(m.text), start = 0;
-  for (int line = 0; line < 2 && start < len; line++) {
-    size_t end = len;
-    char buf[96];
-    for (;;) {
-      memcpy(buf, m.text + start, end - start);
-      buf[end - start] = 0;
-      if (tft.textWidth(buf) <= w || end <= start + 1) break;
-      size_t cut = end - 1;
-      while (cut > start && m.text[cut] != ' ') cut--;
-      end = cut > start ? cut : end - 1;
-    }
-    tft.drawString(buf, x, y + line * 16);
-    start = end;
-    while (start < len && m.text[start] == ' ') start++;
-  }
+  layout_text(m.text, x, y, w, max_lines, true);
 }
 
 static void draw_msg(const Msg& m, int y) {
@@ -515,7 +536,7 @@ static void draw_msg(const Msg& m, int y) {
   tft.drawRect(x + 1, sy + 1, sw - 2, sh - 2, color);
   int ty = sy + 4;
   if (m.text[0]) {
-    draw_text(m, x + 6, ty, sw - 12);
+    draw_text(m, x + 6, ty, sw - 12, STRIP_LINES);
     ty += text_lines(m) * 16 + 4;
   }
   if (m.drawing >= 0) {
@@ -554,7 +575,7 @@ static void show_chat() {
     if (y - h < HEADER_H + 2) break;
     y -= h;
     draw_msg(msgs[i], y);
-    if (msgs[i].drawing >= 0) hits[hit_count++] = {y, y + h, (uint8_t)i};
+    hits[hit_count++] = {y, y + h, (uint8_t)i};
     y -= 4;
   }
   if (!any) centered("Nothing here yet. Say hi!", (H - WRITE_H + HEADER_H) / 2);
@@ -649,7 +670,7 @@ static void show_view() {
   tft.setTextDatum(TL_DATUM);
   if (m.text[0]) {
     tft.setTextColor(INK, PAPER);
-    draw_text(m, 6, HEADER_H + 14, W - 12);
+    draw_text(m, 6, HEADER_H + 14, W - 12, (H - HEADER_H - 14) / 16);
   }
   if (m.drawing >= 0) decode_drawing(drawings[m.drawing], drawing_len[m.drawing], redraw_point, nullptr);
 }
@@ -1011,7 +1032,7 @@ static void on_tap(int x, int y) {
         return;
       }
       for (uint8_t i = 0; i < hit_count; i++) {
-        if (y >= hits[i].y0 && y < hits[i].y1 && msgs[hits[i].msg].drawing >= 0) {
+        if (y >= hits[i].y0 && y < hits[i].y1) {
           viewing = hits[i].msg;
           switch_to(Screen::View);
           return;

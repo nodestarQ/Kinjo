@@ -5,7 +5,7 @@
 	import { app } from '$lib/kinjo/state.svelte';
 	import { shortName, tabColor } from '$lib/kinjo/tabs';
 	import type { Message } from '$lib/kinjo/mesh';
-	import type { ColoredStroke } from '$lib/kinjo/protocol';
+	import { MAX_TEXT, type ColoredStroke } from '$lib/kinjo/protocol';
 
 	// One chat: every message is sealed for exactly one contact.
 	let { name }: { name: string } = $props();
@@ -14,6 +14,10 @@
 	let text = $state('');
 	let drawOpen = $state(false);
 	let strokes = $state<ColoredStroke[]>([]);
+
+	// The limit is in bytes (SPEC §6): Japanese takes 3 per character, emoji 4.
+	const bytes = $derived(new TextEncoder().encode(text).length);
+	const tooLong = $derived(bytes > MAX_TEXT);
 
 	const contact = $derived(app.contacts.find((c) => c.name === name));
 	const color = $derived(contact && !contact.revoked ? tabColor(name) : '#9aa5b1');
@@ -43,6 +47,7 @@
 		try {
 			if (!contact || contact.revoked) throw new Error('not a contact you can write to');
 			if (!text && !strokes.length) return;
+			if (tooLong) throw new Error(`text is ${bytes} bytes, the limit is ${MAX_TEXT}`);
 			await app.sendNote(contact, text, $state.snapshot(strokes) as ColoredStroke[]);
 			text = '';
 			strokes = [];
@@ -82,9 +87,10 @@
 		<div class="mt-3 flex items-stretch">
 			<span class="tab hidden items-center rounded-l-sm rounded-r-none sm:flex" style="background:{tabColor(app.name || 'this laptop')}">{shortName(app.name) || 'you'}</span>
 			<div class="flex min-w-0 flex-1 items-center gap-2 rounded-sm border-2 bg-paper sm:rounded-l-none sm:border-l-0 px-2 py-1" style="border-color:{tabColor(app.name || 'this laptop')}">
-				<input class="min-w-0 flex-1 bg-transparent outline-none" bind:value={text} maxlength="200" placeholder="Write something…" onkeydown={(e) => e.key === 'Enter' && send()} />
+				<input class="min-w-0 flex-1 bg-transparent outline-none" bind:value={text} placeholder="Write something…" onkeydown={(e) => e.key === 'Enter' && send()} />
+				<span class="shrink-0 text-xs tabular-nums {tooLong ? 'font-bold text-red-600' : 'text-frame-dark'}" title="bytes used of {MAX_TEXT}">{bytes}/{MAX_TEXT}</span>
 				<button class="btn-secondary" onclick={() => (drawOpen = !drawOpen)} aria-label="draw">✎</button>
-				<button class="btn" disabled={!app.bridgeConnected} onclick={send}>Send</button>
+				<button class="btn" disabled={!app.bridgeConnected || tooLong} onclick={send}>Send</button>
 			</div>
 		</div>
 		{#if drawOpen}

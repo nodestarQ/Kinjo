@@ -70,7 +70,7 @@ Home has four tiles:
 - **Info**: ENS name, node ID, public key, contact count, radio MAC.
 - **Calibrate**: touch the four arrows. The result is kept in flash.
 
-The note has a toolbar at the right edge: pen color (tap it for the palette), ABC (keyboard, the text goes onto the note), CLR and SEND. SEND sends what is on the note: text, drawing or both as one message. The note stays until it's sent or cleared. On the keyboard, SHIFT capitalizes the next letter and DONE goes back to the note. Draw with a stylus or fingernail. In a chat your own messages are on the left and the other device's on the right, each device in its own color (same as in the web app). Tap a drawing to see it full screen. The X closes it.
+The note has a toolbar at the right edge: pen color (tap it for the palette), ABC (keyboard, the text goes onto the note), CLR and SEND. SEND sends what is on the note: text, drawing or both as one message. The note stays until it's sent or cleared. On the keyboard, SHIFT capitalizes the next letter and DONE goes back to the note. Draw with a stylus or fingernail. In a chat your own messages are on the left and the other device's on the right, each device in its own color (same as in the web app). Tap a message to see all of it full screen (a chat strip shows two lines of text). The X closes it. The screen font is ASCII only, other characters show as `?`.
 
 Switching off clears the chat history. Messages sent while it's off are lost.
 
