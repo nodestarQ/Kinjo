@@ -22,7 +22,24 @@ static DeviceState state;
 static FrameReader reader;
 static uint32_t last_stats_ms = 0;
 
+// CONTACT_UPDATE (SPEC §11): the owner's laptop pushes an ENS sync result over the radio.
+static void on_contact_update(const Contact& from, const uint8_t* pt, size_t len) {
+  bool changed;
+  UpdateResult r = apply_contact_update(state, from, pt, len, changed);
+  static const char* const results[] = {"applied", "not from own laptop, ignored", "malformed", "contacts full"};
+  radio::log("contact update from %.*s: %s", from.name_len, from.name, results[r]);
+  if (!changed) return;
+  storage::save(state);
+#ifdef KINJO_SCREEN
+  ui::refresh();
+#endif
+}
+
 static void on_message(const Contact& from, const uint8_t* pt, size_t len) {
+  if (pt[0] == KIND_CONTACT_UPDATE) {
+    on_contact_update(from, pt, len);
+    return;
+  }
 #ifdef KINJO_SCREEN
   ui::on_message(from, pt, len);
 #endif

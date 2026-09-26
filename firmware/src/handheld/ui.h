@@ -209,12 +209,16 @@ static bool owner_verified() {
   size_t suffix = state->name_len - (dot - state->name);  // ".alice.kinjo.eth"
   for (uint8_t i = 0; i < state->contact_count; i++) {
     const Contact& c = state->contacts[i];
-    if ((c.flags & FLAG_VERIFIED) && c.name_len > suffix && memcmp(c.name + c.name_len - suffix, dot, suffix) == 0) return true;
+    if ((c.flags & FLAG_VERIFIED) && !(c.flags & FLAG_REVOKED) && c.name_len > suffix && memcmp(c.name + c.name_len - suffix, dot, suffix) == 0) return true;
   }
   return false;
 }
 
-static bool visible(uint8_t i) { return !humans_only || (state->contacts[i].flags & FLAG_VERIFIED); }
+// Revoked contacts stay in flash but are never shown.
+static bool visible(uint8_t i) {
+  uint8_t f = state->contacts[i].flags;
+  return !(f & FLAG_REVOKED) && (!humans_only || (f & FLAG_VERIFIED));
+}
 
 static Msg& new_msg(const Contact& other, const char* tab_name, size_t tab_len, bool outgoing) {
   if (msg_count == MAX_MSGS) {
@@ -445,7 +449,7 @@ static void show_contacts() {
   char filter[32];
   uint8_t hidden = state->contact_count - shown_count;
   if (humans_only) snprintf(filter, sizeof(filter), "humans only (%u hidden)", hidden);
-  else snprintf(filter, sizeof(filter), "all (%u)", state->contact_count);
+  else snprintf(filter, sizeof(filter), "all (%u)", shown_count);
   title_bar("Contacts", filter);
   if (!shown_count) {
     centered(state->contact_count ? "No verified humans yet." : "No contacts yet.", H / 2 - 10);

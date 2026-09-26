@@ -15,6 +15,10 @@ constexpr uint8_t TYPE_SEALED = 0x10;
 constexpr uint8_t KIND_TEXT = 0x01;
 constexpr uint8_t KIND_DRAWING = 0x02;
 constexpr uint8_t KIND_NOTE = 0x03;
+constexpr uint8_t KIND_CONTACT_UPDATE = 0x04;
+
+constexpr uint8_t OP_SET = 0x01;
+constexpr uint8_t OP_REVOKE = 0x02;
 
 constexpr uint32_t BROADCAST = 0xFFFFFFFF;
 constexpr uint8_t DEFAULT_TTL = 4;
@@ -63,6 +67,8 @@ constexpr uint8_t STATUS_FULL = 0x02;
 constexpr uint8_t STATUS_UNKNOWN_COMMAND = 0x03;
 
 constexpr uint8_t FLAG_VERIFIED = 0x01;
+// Kept in flash only, never sent: the contact was revoked by a CONTACT_UPDATE (SPEC §11).
+constexpr uint8_t FLAG_REVOKED = 0x80;
 constexpr size_t MAX_CONTACTS = 64;
 constexpr size_t MAX_BLOCKS = 256;
 constexpr size_t INFO_MAX = KEY_SIZE + 4 + 1 + MAX_NAME;
@@ -256,5 +262,18 @@ size_t handle_provision(DeviceState& s, const uint8_t* body, size_t len, void (*
 
 // Contact whose public key starts with `node_id` (SPEC §3). nullptr if none.
 const Contact* find_contact(const DeviceState& s, uint32_t node_id);
+
+// --- CONTACT_UPDATE (SPEC §11) ---
+
+enum UpdateResult : uint8_t { UPDATE_APPLIED, UPDATE_NOT_TRUSTED, UPDATE_MALFORMED, UPDATE_FULL };
+
+// True if a device named `own` takes updates from `sender` about `target`: same parent name, not about itself.
+bool accepts_update(const char* own, size_t own_len, const char* sender, size_t sender_len, const char* target,
+                    size_t target_len);
+
+// Applies a CONTACT_UPDATE plaintext that opened from `from`. Sets `changed` when the state must be saved.
+// REVOKE for a name that isn't stored is applied and changes nothing.
+UpdateResult apply_contact_update(DeviceState& s, const Contact& from, const uint8_t* plaintext, size_t len,
+                                  bool& changed);
 
 }  // namespace kinjo

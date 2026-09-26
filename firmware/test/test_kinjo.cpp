@@ -70,6 +70,22 @@ struct ProvisionCase {
   const char* body;
 };
 
+struct UpdateCase {
+  const char* label;
+  uint8_t op, flags;
+  const char* pub;
+  const char* name;
+  const char* plaintext;
+};
+
+struct AcceptCase {
+  const char* label;
+  const char* own;
+  const char* sender;
+  const char* target;
+  bool accepted;
+};
+
 #include "vectors.inc"
 
 static int failures = 0;
@@ -454,6 +470,85 @@ static void test_provision() {
   CHECK(s.contact_count == 0 && s.name_len == 0 && s.block_count == 0, "wipe clears everything");
 }
 
+static void make_contact(Contact& c, const char* name, const uint8_t* pub) {
+  memset(&c, 0, sizeof(c));
+  c.name_len = strlen(name);
+  memcpy(c.name, name, c.name_len);
+  memcpy(c.pub, pub, KEY_SIZE);
+}
+
+static void set_name(DeviceState& s, const char* name) {
+  s.name_len = strlen(name);
+  memcpy(s.name, name, s.name_len);
+}
+
+static void test_contact_update() {
+  for (const AcceptCase& a : UPDATE_ACCEPT) {
+    CHECK(accepts_update(a.own, strlen(a.own), a.sender, strlen(a.sender), a.target, strlen(a.target)) == a.accepted,
+          a.label);
+  }
+
+  // The sealed update from the laptop opens on the handheld and fits one packet.
+  CHECK(UPDATE_SEALED.packets.size() == 1, "update fits one packet");
+  Bytes packet = hex(UPDATE_SEALED.packets[0]);
+  Header h;
+  const uint8_t* body;
+  size_t body_len, pt_len = 0;
+  uint8_t pt[MAX_PLAINTEXT];
+  CHECK(parse_packet(packet.data(), packet.size(), h, body, body_len) &&
+            open_sealed(hex(UPDATE_SEALED.key).data(), h, body, body_len, pt, pt_len) &&
+            eq(pt, pt_len, hex(UPDATE_SEALED.plaintext)),
+        "update opens");
+
+  static DeviceState s;
+  Bytes priv = hex(HANDHELD_PRIV), laptop = hex(LAPTOP_PUB);
+  reset_state(s, priv.data());
+  set_name(s, "handheld.alice.kinjo.eth");
+  make_contact(s.contacts[s.contact_count++], "laptop.alice.kinjo.eth", laptop.data());
+  make_contact(s.contacts[s.contact_count++], "laptop.bob.kinjo.eth", laptop.data());
+  const Contact& own_laptop = s.contacts[0];
+  const Contact& stranger = s.contacts[1];
+  bool changed;
+
+  for (const UpdateCase& c : UPDATE_CASES) {
+    Bytes b = hex(c.plaintext);
+    UpdateResult r = apply_contact_update(s, own_laptop, b.data(), b.size(), changed);
+    CHECK(r == UPDATE_APPLIED, c.label);
+    const Contact* got = nullptr;
+    for (uint8_t i = 0; i < s.contact_count; i++) {
+      if (s.contacts[i].name_len == strlen(c.name) && !memcmp(s.contacts[i].name, c.name, strlen(c.name))) {
+        got = &s.contacts[i];
+      }
+    }
+    if (c.op == OP_SET) {
+      CHECK(changed && got && got->flags == c.flags && eq(got->pub, KEY_SIZE, hex(c.pub)), c.label);
+    } else {
+      CHECK(changed && got && (got->flags & FLAG_REVOKED), c.label);
+    }
+  }
+  // Cases: set handheld.bob (verified), set laptop.bob, revoke handheld.bob.
+  CHECK(s.contact_count == 3, "set adds or replaces by name");
+
+  Bytes set = hex(UPDATE_CASES[0].plaintext);
+  apply_contact_update(s, own_laptop, set.data(), set.size(), changed);
+  CHECK(changed && s.contacts[2].flags == FLAG_VERIFIED, "set clears revoked");
+
+  Bytes revoke = hex(UPDATE_CASES[2].plaintext);
+  CHECK(apply_contact_update(s, stranger, revoke.data(), revoke.size(), changed) == UPDATE_NOT_TRUSTED && !changed,
+        "update from another owner ignored");
+
+  for (const ProvisionCase& m : UPDATE_MALFORMED_CASES) {
+    Bytes b = hex(m.body);
+    CHECK(apply_contact_update(s, own_laptop, b.data(), b.size(), changed) == UPDATE_MALFORMED && !changed, m.label);
+  }
+
+  s.contact_count = MAX_CONTACTS;
+  Bytes other = hex(UPDATE_CASES[0].plaintext);
+  other[other.size() - 1] = 'x';  // a name that isn't stored
+  CHECK(apply_contact_update(s, own_laptop, other.data(), other.size(), changed) == UPDATE_FULL && !changed,
+        "update when full");
+}
+
 int main() {
   test_header();
   test_fragments();
@@ -466,6 +561,7 @@ int main() {
   test_payloads();
   test_cobs();
   test_provision();
+  test_contact_update();
   printf("%d checks, %d failed\n", checks, failures);
   return failures ? 1 : 0;
 }

@@ -63,6 +63,10 @@ inline void receive(const radio::RxFrame& f, uint32_t now_ms) {
     radio::log("handheld: message from unknown node %08lx dropped", (unsigned long)h.source);
     return;
   }
+  if (from->flags & FLAG_REVOKED) {
+    radio::log("handheld: message from revoked %.*s dropped", from->name_len, from->name);
+    return;
+  }
   uint8_t key[KEY_SIZE];
   size_t plain_len = 0;
   bool ok = derive_key(state->priv, from->pub, key) && open_sealed(key, h, body, body_len, plain_buf, plain_len);

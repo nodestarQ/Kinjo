@@ -93,6 +93,23 @@ def main(out_path):
     lines += [f"  {{{s(m['label'])}, {s(m['body'])}}}," for m in p["malformed"]]
     lines.append("};")
 
+    u = load("contact-update.json")
+    lines.append("static const std::vector<UpdateCase> UPDATE_CASES = {")
+    lines += [f"  {{{s(c['label'])}, {c['op']}, {c['flags']}, {s(c['pub'])}, {s(c['name'])}, {s(c['plaintext'])}}},"
+              for c in u["cases"]]
+    lines.append("};")
+    lines.append("static const std::vector<ProvisionCase> UPDATE_MALFORMED_CASES = {")
+    lines += [f"  {{{s(m['label'])}, {s(m['plaintext'])}}}," for m in u["malformed"]]
+    lines.append("};")
+    lines.append("static const std::vector<AcceptCase> UPDATE_ACCEPT = {")
+    lines += [f"  {{{s(a['label'])}, {s(a['own'])}, {s(a['sender'])}, {s(a['target'])}, {str(a['accepted']).lower()}}},"
+              for a in u["accept"]]
+    lines.append("};")
+    c = u["sealed"]
+    lines.append(f"static const SealedCase UPDATE_SEALED = {{\"contact_update\", {s(c['key'])}, {c['source']}u, "
+                 f"{c['destination']}u, {c['message_id']}u, {c['ttl']}, {s(c['nonce'])}, {s(c['plaintext'])}, "
+                 f"{strs(c['packets'])}}};")
+
     Path(out_path).write_text("\n".join(lines) + "\n")
 
 
