@@ -1,3 +1,5 @@
+<img src="web/app/src/lib/assets/logo.svg" alt="Kinjo logo" width="96">
+
 # Kinjo
 
 > 近所 (きんじょ, *kinjo*): "neighborhood"
