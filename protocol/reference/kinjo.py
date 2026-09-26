@@ -45,6 +45,22 @@ FRAME_RADIO_RX = 0x01
 FRAME_RADIO_TX = 0x02
 FRAME_LOG = 0x03
 FRAME_PROVISION = 0x04
+FRAME_PROVISION_REPLY = 0x05
+
+CMD_INFO = 0x01
+CMD_SET_NAME = 0x02
+CMD_ADD_CONTACT = 0x03
+CMD_CLEAR_CONTACTS = 0x04
+CMD_WIPE = 0x05
+
+STATUS_OK = 0x00
+STATUS_MALFORMED = 0x01
+STATUS_FULL = 0x02
+STATUS_UNKNOWN_COMMAND = 0x03
+
+FLAG_VERIFIED = 0x01
+MAX_CONTACTS = 64
+MAX_BLOCKS = 256
 
 _HEADER = struct.Struct("<BBBBIIIBB")
 
@@ -330,3 +346,80 @@ def parse_serial_frame(frame: bytes) -> tuple[int, bytes]:
     if not data:
         raise ProtocolError("empty frame")
     return data[0], data[1:]
+
+
+# --- Provisioning (SPEC §13) ---
+
+def encode_name(name: str) -> bytes:
+    n = name.encode("utf-8")
+    if len(n) > MAX_NAME:
+        raise ProtocolError("name too long")
+    return bytes([len(n)]) + n
+
+
+def decode_name(data: bytes, offset: int) -> tuple[str, int]:
+    if offset >= len(data):
+        raise ProtocolError("missing name")
+    n = data[offset]
+    end = offset + 1 + n
+    if n > MAX_NAME or end > len(data):
+        raise ProtocolError("bad name")
+    return data[offset + 1:end].decode("utf-8"), end
+
+
+def provision_request(cmd: int, name: str = "", pub: bytes = b"", flags: int = 0) -> bytes:
+    if cmd in (CMD_INFO, CMD_CLEAR_CONTACTS, CMD_WIPE):
+        return bytes([cmd])
+    if cmd == CMD_SET_NAME:
+        return bytes([cmd]) + encode_name(name)
+    if cmd == CMD_ADD_CONTACT:
+        if len(pub) != KEY_SIZE:
+            raise ProtocolError("bad key")
+        return bytes([cmd, flags]) + pub + encode_name(name)
+    raise ProtocolError("unknown command")
+
+
+def parse_provision_request(body: bytes) -> tuple[int, dict]:
+    """Strict: trailing bytes are malformed. Unknown commands raise with cmd set."""
+    if not body:
+        raise ProtocolError("empty request")
+    cmd = body[0]
+    if cmd in (CMD_INFO, CMD_CLEAR_CONTACTS, CMD_WIPE):
+        end, args = 1, {}
+    elif cmd == CMD_SET_NAME:
+        name, end = decode_name(body, 1)
+        args = {"name": name}
+    elif cmd == CMD_ADD_CONTACT:
+        if len(body) < 2 + KEY_SIZE:
+            raise ProtocolError("short contact")
+        name, end = decode_name(body, 2 + KEY_SIZE)
+        args = {"flags": body[1], "pub": body[2:2 + KEY_SIZE], "name": name}
+    else:
+        raise ProtocolError("unknown command")
+    if end != len(body):
+        raise ProtocolError("trailing bytes")
+    return cmd, args
+
+
+def info_data(pub: bytes, contacts: int, blocks: int, name: str) -> bytes:
+    return pub + bytes([VERSION, contacts]) + struct.pack("<H", blocks) + encode_name(name)
+
+
+def parse_info(data: bytes) -> dict:
+    if len(data) < KEY_SIZE + 4:
+        raise ProtocolError("short info")
+    name, end = decode_name(data, KEY_SIZE + 4)
+    if end != len(data):
+        raise ProtocolError("trailing bytes")
+    return {"pub": data[:KEY_SIZE], "version": data[KEY_SIZE], "contacts": data[KEY_SIZE + 1],
+            "blocks": struct.unpack_from("<H", data, KEY_SIZE + 2)[0], "name": name}
+
+
+def provision_reply(cmd: int, status: int, data: bytes = b"") -> bytes:
+    return bytes([cmd, status]) + data
+
+
+def parse_provision_reply(body: bytes) -> tuple[int, int, bytes]:
+    if len(body) < 2:
+        raise ProtocolError("short reply")
+    return body[0], body[1], body[2:]

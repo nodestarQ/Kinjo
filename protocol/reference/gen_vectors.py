@@ -114,6 +114,50 @@ def cobs_vectors():
     return {"cases": cases, "decode_only": decode_only, "serial_frame": frame}
 
 
+def provision_vectors():
+    hp = k.public_key(HANDHELD_PRIV)
+    lp = k.public_key(LAPTOP_PRIV)
+    requests = [
+        ("info", k.CMD_INFO, {}),
+        ("set_name", k.CMD_SET_NAME, {"name": HANDHELD_NAME}),
+        ("clear_name", k.CMD_SET_NAME, {"name": ""}),
+        ("add_contact_verified", k.CMD_ADD_CONTACT, {"flags": k.FLAG_VERIFIED, "pub": lp, "name": LAPTOP_NAME}),
+        ("clear_contacts", k.CMD_CLEAR_CONTACTS, {}),
+        ("wipe", k.CMD_WIPE, {}),
+    ]
+    req_out = []
+    for label, cmd, args in requests:
+        body = k.provision_request(cmd, **args)
+        req_out.append({"label": label, "command": cmd,
+                        "args": {a: (v.hex() if isinstance(v, bytes) else v) for a, v in args.items()},
+                        "body": hx(body), "wire": hx(k.serial_frame(k.FRAME_PROVISION, body))})
+    info_new = k.info_data(hp, 0, 0, "")
+    info_named = k.info_data(hp, 1, 3, HANDHELD_NAME)
+    replies = [
+        ("info_new_device", k.CMD_INFO, k.STATUS_OK, info_new),
+        ("info_provisioned", k.CMD_INFO, k.STATUS_OK, info_named),
+        ("set_name_ok", k.CMD_SET_NAME, k.STATUS_OK, b""),
+        ("add_contact_full", k.CMD_ADD_CONTACT, k.STATUS_FULL, b""),
+        ("unknown_command", 0x7F, k.STATUS_UNKNOWN_COMMAND, b""),
+    ]
+    rep_out = [{"label": label, "command": cmd, "status": st, "data": hx(data),
+                "body": hx(k.provision_reply(cmd, st, data)),
+                "wire": hx(k.serial_frame(k.FRAME_PROVISION_REPLY, k.provision_reply(cmd, st, data)))}
+               for label, cmd, st, data in replies]
+    infos = [{"data": hx(d), "pub": hx(hp), "version": 1, "contacts": c, "blocks": b, "name": n}
+             for d, c, b, n in ((info_new, 0, 0, ""), (info_named, 1, 3, HANDHELD_NAME))]
+    malformed = [
+        ("empty", b""),
+        ("name_too_long", bytes([k.CMD_SET_NAME, 65]) + b"a" * 65),
+        ("name_length_past_end", bytes([k.CMD_SET_NAME, 10]) + b"abc"),
+        ("contact_short_key", bytes([k.CMD_ADD_CONTACT, 0]) + bytes(10)),
+        ("trailing_bytes", bytes([k.CMD_INFO, 0x00])),
+    ]
+    return {"requests": req_out, "replies": rep_out, "infos": infos,
+            "malformed": [{"label": l, "body": hx(b)} for l, b in malformed],
+            "unknown_command": hx(bytes([0x7F]))}
+
+
 def main():
     OUT.mkdir(exist_ok=True)
     files = {
@@ -124,6 +168,7 @@ def main():
         "drawing.json": drawing_vectors(),
         "identity.json": identity_vectors(),
         "cobs.json": cobs_vectors(),
+        "provision.json": provision_vectors(),
     }
     for name, data in files.items():
         (OUT / name).write_text(json.dumps(data, indent=2) + "\n")

@@ -19,5 +19,6 @@ python3 -m venv .venv
 | `drawing.json` | stroke encoding, big jumps, long strokes |
 | `identity.json` | IDENTITY body and packet |
 | `cobs.json` | COBS and serial frames |
+| `provision.json` | USB provisioning commands, replies, info and malformed requests |
 
 The keys in the vectors are public test keys. Never use them on a real device.

@@ -168,12 +168,44 @@ Registration flow: [docs/onboarding.md](../docs/onboarding.md).
 | `0x02` | RADIO_TX | laptop to device | packet (sent to all peers) |
 | `0x03` | LOG | device to laptop | UTF-8 text |
 | `0x04` | PROVISION | laptop to handheld | §13 |
+| `0x05` | PROVISION_REPLY | handheld to laptop | §13 |
 
 The relay uses the same framing to report every frame it forwards as RADIO_RX. That is the log that shows it only sees ciphertext.
 
-## 13. Provisioning (laptop to handheld over USB)
+## 13. Provisioning (web app to handheld over USB)
 
-Defined with the onboarding flow. At minimum it gives the handheld its own ENS name and the identities (name + public key) of the contacts it may talk to.
+Flow: [docs/onboarding.md](../docs/onboarding.md). The web app sends one PROVISION frame and waits for one PROVISION_REPLY before sending the next.
+
+```text
+PROVISION        = command (1) + arguments
+PROVISION_REPLY  = command (1) + status (1) + data
+name             = length (u8, 0 to 64) + UTF-8 bytes, ENS-normalized by the web app
+```
+
+| Command | Name | Arguments | Reply data (status OK) |
+|---|---|---|---|
+| `0x01` | INFO | none | info |
+| `0x02` | SET_NAME | name (length 0 clears it) | none |
+| `0x03` | ADD_CONTACT | flags (1) + public key (32) + name | none |
+| `0x04` | CLEAR_CONTACTS | none | none |
+| `0x05` | WIPE | none | info (with the new key) |
+
+```text
+info = public key (32) + protocol version (1, 0x01) + contacts (u8) + blocks (u16)
+       + own name
+```
+
+- Contact flags: bit 0 = verified human (owner has `xyz.kinjo.verified-human`, see onboarding). Other bits 0.
+- ADD_CONTACT with a name that's already stored replaces that contact.
+- WIPE makes a new X25519 key pair and clears the name, contacts and block list. The old private key is overwritten.
+- The block list is managed on the device only. Nothing here reads or changes it except WIPE.
+
+| Status | Meaning |
+|---|---|
+| `0x00` | OK |
+| `0x01` | malformed arguments |
+| `0x02` | full (64 contacts) |
+| `0x03` | unknown command |
 
 ## 14. Limits
 
@@ -189,6 +221,7 @@ Defined with the onboarding flow. At minimum it gives the handheld its own ENS n
 | Reassembly slots / timeout | 4 / 5 s |
 | Max text | 200 B |
 | Max ENS name | 64 B |
+| Contacts / blocks on the handheld | 64 / 256 |
 
 ## 15. Test vectors
 
@@ -200,3 +233,4 @@ Defined with the onboarding flow. At minimum it gives the handheld its own ENS n
 - SEALED body for a fixed key, nonce and plaintext
 - drawing encode
 - COBS frames
+- provisioning commands and replies

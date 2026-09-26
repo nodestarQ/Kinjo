@@ -24,7 +24,8 @@ class VectorsUpToDate(unittest.TestCase):
                          ("sealed.json", gen_vectors.sealed_vectors),
                          ("drawing.json", gen_vectors.drawing_vectors),
                          ("identity.json", gen_vectors.identity_vectors),
-                         ("cobs.json", gen_vectors.cobs_vectors)]:
+                         ("cobs.json", gen_vectors.cobs_vectors),
+                         ("provision.json", gen_vectors.provision_vectors)]:
             self.assertEqual(load(name), json.loads(json.dumps(fn())), name)
 
 
@@ -162,6 +163,36 @@ class CobsTest(unittest.TestCase):
     def test_rejects_truncated(self):
         with self.assertRaises(k.ProtocolError):
             k.cobs_decode(b"\x05\x11\x22")
+
+
+class ProvisionTest(unittest.TestCase):
+    def setUp(self):
+        self.v = load("provision.json")
+
+    def test_requests_roundtrip(self):
+        for r in self.v["requests"]:
+            cmd, args = k.parse_provision_request(bytes.fromhex(r["body"]))
+            self.assertEqual(cmd, r["command"])
+            got = {a: (v.hex() if isinstance(v, bytes) else v) for a, v in args.items()}
+            self.assertEqual(got, r["args"], r["label"])
+            wire = bytes.fromhex(r["wire"])
+            self.assertEqual(k.parse_serial_frame(wire[:-1]), (k.FRAME_PROVISION, bytes.fromhex(r["body"])))
+
+    def test_replies_and_info(self):
+        for r in self.v["replies"]:
+            self.assertEqual(k.parse_provision_reply(bytes.fromhex(r["body"])),
+                             (r["command"], r["status"], bytes.fromhex(r["data"])))
+        for i in self.v["infos"]:
+            info = k.parse_info(bytes.fromhex(i["data"]))
+            self.assertEqual((info["pub"].hex(), info["version"], info["contacts"], info["blocks"], info["name"]),
+                             (i["pub"], i["version"], i["contacts"], i["blocks"], i["name"]))
+
+    def test_malformed_rejected(self):
+        for m in self.v["malformed"]:
+            with self.assertRaises(k.ProtocolError, msg=m["label"]):
+                k.parse_provision_request(bytes.fromhex(m["body"]))
+        with self.assertRaises(k.ProtocolError):
+            k.parse_provision_request(bytes.fromhex(self.v["unknown_command"]))
 
 
 if __name__ == "__main__":

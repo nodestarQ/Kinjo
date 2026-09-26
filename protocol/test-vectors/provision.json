@@ -1,0 +1,137 @@
+{
+  "requests": [
+    {
+      "label": "info",
+      "command": 1,
+      "args": {},
+      "body": "01",
+      "wire": "03040100"
+    },
+    {
+      "label": "set_name",
+      "command": 2,
+      "args": {
+        "name": "handheld.alice.kinjo.eth"
+      },
+      "body": "021868616e6468656c642e616c6963652e6b696e6a6f2e657468",
+      "wire": "1c04021868616e6468656c642e616c6963652e6b696e6a6f2e65746800"
+    },
+    {
+      "label": "clear_name",
+      "command": 2,
+      "args": {
+        "name": ""
+      },
+      "body": "0200",
+      "wire": "0304020100"
+    },
+    {
+      "label": "add_contact_verified",
+      "command": 3,
+      "args": {
+        "flags": 1,
+        "pub": "5869aff450549732cbaaed5e5df9b30a6da31cb0e5742bad5ad4a1a768f1a67b",
+        "name": "laptop.alice.kinjo.eth"
+      },
+      "body": "03015869aff450549732cbaaed5e5df9b30a6da31cb0e5742bad5ad4a1a768f1a67b166c6170746f702e616c6963652e6b696e6a6f2e657468",
+      "wire": "3b0403015869aff450549732cbaaed5e5df9b30a6da31cb0e5742bad5ad4a1a768f1a67b166c6170746f702e616c6963652e6b696e6a6f2e65746800"
+    },
+    {
+      "label": "clear_contacts",
+      "command": 4,
+      "args": {},
+      "body": "04",
+      "wire": "03040400"
+    },
+    {
+      "label": "wipe",
+      "command": 5,
+      "args": {},
+      "body": "05",
+      "wire": "03040500"
+    }
+  ],
+  "replies": [
+    {
+      "label": "info_new_device",
+      "command": 1,
+      "status": 0,
+      "data": "07a37cbc142093c8b755dc1b10e86cb426374ad16aa853ed0bdfc0b2b86d1c7c0100000000",
+      "body": "010007a37cbc142093c8b755dc1b10e86cb426374ad16aa853ed0bdfc0b2b86d1c7c0100000000",
+      "wire": "0305012207a37cbc142093c8b755dc1b10e86cb426374ad16aa853ed0bdfc0b2b86d1c7c010101010100"
+    },
+    {
+      "label": "info_provisioned",
+      "command": 1,
+      "status": 0,
+      "data": "07a37cbc142093c8b755dc1b10e86cb426374ad16aa853ed0bdfc0b2b86d1c7c010103001868616e6468656c642e616c6963652e6b696e6a6f2e657468",
+      "body": "010007a37cbc142093c8b755dc1b10e86cb426374ad16aa853ed0bdfc0b2b86d1c7c010103001868616e6468656c642e616c6963652e6b696e6a6f2e657468",
+      "wire": "0305012407a37cbc142093c8b755dc1b10e86cb426374ad16aa853ed0bdfc0b2b86d1c7c0101031a1868616e6468656c642e616c6963652e6b696e6a6f2e65746800"
+    },
+    {
+      "label": "set_name_ok",
+      "command": 2,
+      "status": 0,
+      "data": "",
+      "body": "0200",
+      "wire": "0305020100"
+    },
+    {
+      "label": "add_contact_full",
+      "command": 3,
+      "status": 2,
+      "data": "",
+      "body": "0302",
+      "wire": "0405030200"
+    },
+    {
+      "label": "unknown_command",
+      "command": 127,
+      "status": 3,
+      "data": "",
+      "body": "7f03",
+      "wire": "04057f0300"
+    }
+  ],
+  "infos": [
+    {
+      "data": "07a37cbc142093c8b755dc1b10e86cb426374ad16aa853ed0bdfc0b2b86d1c7c0100000000",
+      "pub": "07a37cbc142093c8b755dc1b10e86cb426374ad16aa853ed0bdfc0b2b86d1c7c",
+      "version": 1,
+      "contacts": 0,
+      "blocks": 0,
+      "name": ""
+    },
+    {
+      "data": "07a37cbc142093c8b755dc1b10e86cb426374ad16aa853ed0bdfc0b2b86d1c7c010103001868616e6468656c642e616c6963652e6b696e6a6f2e657468",
+      "pub": "07a37cbc142093c8b755dc1b10e86cb426374ad16aa853ed0bdfc0b2b86d1c7c",
+      "version": 1,
+      "contacts": 1,
+      "blocks": 3,
+      "name": "handheld.alice.kinjo.eth"
+    }
+  ],
+  "malformed": [
+    {
+      "label": "empty",
+      "body": ""
+    },
+    {
+      "label": "name_too_long",
+      "body": "02416161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161"
+    },
+    {
+      "label": "name_length_past_end",
+      "body": "020a616263"
+    },
+    {
+      "label": "contact_short_key",
+      "body": "030000000000000000000000"
+    },
+    {
+      "label": "trailing_bytes",
+      "body": "0100"
+    }
+  ],
+  "unknown_command": "7f"
+}
